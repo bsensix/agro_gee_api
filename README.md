@@ -1,6 +1,8 @@
 # Agro GEE API
 
-<img src="logo_api.png" width="200"/>
+<p align="center">
+  <img src="logo_api.png" width="300"/>
+</p>
 
 API backend do projeto Agro Insight, focada em operacoes de dados agricolas e integracao com Google Earth Engine (GEE).
 
