@@ -14,3 +14,17 @@ def test_ci_workflow_contract_baseline() -> None:
     assert "Install dependencies" in content
     assert "pip install" in content
     assert "run: pytest" in content
+
+
+def test_ci_workflow_contract_postgres_free_default() -> None:
+    workflow_path = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    )
+    content = workflow_path.read_text(encoding="utf-8")
+
+    assert "- name: Run fast tests" in content
+    assert 'run: pytest -v -m "not integration"' in content
+    assert "- name: Start integration dependencies" in content
+    assert "run: docker compose up -d" in content
+    assert "- name: Run integration tests" in content
+    assert "run: pytest -v -m integration" in content

@@ -1,5 +1,4 @@
 from datetime import date
-from typing import Mapping, Sequence
 
 from fastapi.testclient import TestClient
 
@@ -8,7 +7,9 @@ from agro_gee_api.routes._authz import AuthzContext, get_authz_context
 from agro_gee_api.routes.gee import _is_gee_auth_test_enabled
 from agro_gee_api.services.gee_client import GEEUnavailableError
 from agro_gee_api.services.gee_client import GEEAuthError
-from agro_gee_api.services.gee_sentinel2_extract import ValidationError as ExtractValidationError
+from agro_gee_api.services.gee_sentinel2_extract import (
+    ValidationError as ExtractValidationError,
+)
 from agro_gee_api.services.gee_meteo_extract import (
     GEETimeoutError as MeteoGEETimeoutError,
     ValidationError as MeteoValidationError,
@@ -25,60 +26,6 @@ def _setup_auth_test_client(monkeypatch, authz_override) -> TestClient:
     return TestClient(app)
 
 
-class _FakeAuthzCursor:
-    def __init__(
-        self,
-        allowed_rows: Sequence[Mapping[str, object]],
-        role_row: Mapping[str, object],
-    ):
-        self._allowed_rows = allowed_rows
-        self._role_row = role_row
-        self._execute_count = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def execute(self, query: str, params: tuple[object, ...]) -> None:
-        self._execute_count += 1
-
-    def fetchall(self) -> Sequence[Mapping[str, object]]:
-        return self._allowed_rows
-
-    def fetchone(self) -> Mapping[str, object]:
-        return self._role_row
-
-
-class _FakeAuthzConnection:
-    def __init__(
-        self,
-        allowed_rows: Sequence[Mapping[str, object]],
-        role_row: Mapping[str, object],
-    ):
-        self._allowed_rows = allowed_rows
-        self._role_row = role_row
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def cursor(self) -> _FakeAuthzCursor:
-        return _FakeAuthzCursor(self._allowed_rows, self._role_row)
-
-
-def _mock_authz_db(monkeypatch, *, role: str) -> None:
-    allowed_rows = [{"user_id": 1}]
-    role_row = {"role": role}
-    monkeypatch.setattr(
-        "agro_gee_api.routes._authz.get_connection",
-        lambda: _FakeAuthzConnection(allowed_rows, role_row),
-    )
-
-
 def test_get_gee_datasets_returns_active_catalog(monkeypatch) -> None:
     class CatalogService:
         def list_datasets(self) -> list[object]:
@@ -90,7 +37,9 @@ def test_get_gee_datasets_returns_active_catalog(monkeypatch) -> None:
 
             return [Item()]
 
-    monkeypatch.setattr("agro_gee_api.routes.gee.get_catalog_service", lambda: CatalogService())
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_catalog_service", lambda: CatalogService()
+    )
     client = TestClient(app)
 
     response = client.get("/gee/datasets")
@@ -111,7 +60,9 @@ def test_post_extract_point_returns_value(monkeypatch) -> None:
         def extract_point(self, **_: object) -> float:
             return 0.41
 
-    monkeypatch.setattr("agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService())
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService()
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -138,7 +89,9 @@ def test_post_extract_point_returns_error_schema(monkeypatch) -> None:
         def extract_point(self, **_: object) -> float:
             raise ExtractValidationError("INVALID_REQUEST", "Unsupported metric")
 
-    monkeypatch.setattr("agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService())
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService()
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -164,7 +117,9 @@ def test_post_extract_point_uses_runtime_client_factory_and_maps_auth_failed(
             raise GEEAuthError("GEE_AUTH_FAILED", "runtime auth failed")
 
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_gee_client", lambda: AuthFailedClient(), raising=False
+        "agro_gee_api.routes.gee.get_gee_client",
+        lambda: AuthFailedClient(),
+        raising=False,
     )
     client = TestClient(app)
 
@@ -193,7 +148,9 @@ def test_post_extract_polygon_uses_runtime_client_factory_and_maps_unavailable(
             )
 
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_gee_client", lambda: UnavailableClient(), raising=False
+        "agro_gee_api.routes.gee.get_gee_client",
+        lambda: UnavailableClient(),
+        raising=False,
     )
     client = TestClient(app)
 
@@ -226,7 +183,9 @@ def test_post_extract_polygon_uses_runtime_client_factory_and_maps_auth_failed(
             raise GEEAuthError("GEE_AUTH_FAILED", "runtime auth failed polygon")
 
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_gee_client", lambda: AuthFailedClient(), raising=False
+        "agro_gee_api.routes.gee.get_gee_client",
+        lambda: AuthFailedClient(),
+        raising=False,
     )
     client = TestClient(app)
 
@@ -255,7 +214,9 @@ def test_post_extract_polygon_returns_value(monkeypatch) -> None:
         def extract_polygon(self, **_: object) -> float:
             return 0.53
 
-    monkeypatch.setattr("agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService())
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService()
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -288,7 +249,9 @@ def test_post_extract_point_includes_daily_series_with_cloud_pct(monkeypatch) ->
                 {"date": "2026-06-02", "value": 0.50, "cloud_pct": 20.0},
             ]
 
-    monkeypatch.setattr("agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService())
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_extract_service", lambda: ExtractService()
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -360,7 +323,9 @@ def test_post_auth_test_returns_200_payload(monkeypatch) -> None:
     def _authz() -> AuthzContext:
         return AuthzContext(requester_user_id=1, allowed_user_ids=(1,))
 
-    monkeypatch.setattr("agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True)
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True
+    )
     monkeypatch.setattr(
         "agro_gee_api.routes.gee.run_gee_auth_recheck", lambda: None, raising=False
     )
@@ -379,9 +344,13 @@ def test_post_auth_test_maps_auth_failed(monkeypatch) -> None:
     def _raise_auth_failed() -> None:
         raise GEEAuthError("GEE_AUTH_FAILED", "Auth failed")
 
-    monkeypatch.setattr("agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True)
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.run_gee_auth_recheck", _raise_auth_failed, raising=False
+        "agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True
+    )
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.run_gee_auth_recheck",
+        _raise_auth_failed,
+        raising=False,
     )
     client = _setup_auth_test_client(monkeypatch, _authz)
 
@@ -399,7 +368,9 @@ def test_post_auth_test_maps_runtime_auth_failed(monkeypatch) -> None:
         assert force_recheck is True
         raise GEEAuthError("GEE_AUTH_FAILED", "Runtime auth failed")
 
-    monkeypatch.setattr("agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True)
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True
+    )
     monkeypatch.setattr(
         "agro_gee_api.routes.gee._GEE_RUNTIME.ensure_initialized",
         _raise_auth_failed,
@@ -420,9 +391,13 @@ def test_post_auth_test_maps_unavailable(monkeypatch) -> None:
     def _raise_unavailable() -> None:
         raise GEEUnavailableError("GEE_UNAVAILABLE", "offline", retryable=True)
 
-    monkeypatch.setattr("agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True)
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.run_gee_auth_recheck", _raise_unavailable, raising=False
+        "agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True
+    )
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.run_gee_auth_recheck",
+        _raise_unavailable,
+        raising=False,
     )
     client = _setup_auth_test_client(monkeypatch, _authz)
 
@@ -440,7 +415,9 @@ def test_post_auth_test_maps_internal_error(monkeypatch) -> None:
     def _raise_internal() -> None:
         raise GEEUnavailableError("GEE_INTERNAL", "boom", retryable=False)
 
-    monkeypatch.setattr("agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True)
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee._has_gee_auth_test_access", lambda _: True
+    )
     monkeypatch.setattr(
         "agro_gee_api.routes.gee.run_gee_auth_recheck", _raise_internal, raising=False
     )
@@ -500,7 +477,6 @@ def test_post_auth_test_returns_404_when_feature_disabled(monkeypatch) -> None:
 def test_post_auth_test_rejects_spoofed_admin_header(monkeypatch) -> None:
     app.dependency_overrides.pop(get_authz_context, None)
     monkeypatch.setenv("GEE_AUTH_TEST_ENABLED", "true")
-    _mock_authz_db(monkeypatch, role="owner")
     client = TestClient(app)
 
     response = client.post(
@@ -512,19 +488,21 @@ def test_post_auth_test_rejects_spoofed_admin_header(monkeypatch) -> None:
     assert response.json()["error_code"] == "FORBIDDEN_SCOPE"
 
 
-def test_post_auth_test_allows_internal_role_from_db(monkeypatch) -> None:
+def test_post_auth_test_rejects_internal_role_from_request_header(monkeypatch) -> None:
     app.dependency_overrides.pop(get_authz_context, None)
     monkeypatch.setenv("GEE_AUTH_TEST_ENABLED", "true")
-    _mock_authz_db(monkeypatch, role="internal")
     monkeypatch.setattr(
         "agro_gee_api.routes.gee.run_gee_auth_recheck", lambda: None, raising=False
     )
     client = TestClient(app)
 
-    response = client.post("/gee/auth/test", headers={"X-User-Id": "1"})
+    response = client.post(
+        "/gee/auth/test",
+        headers={"X-User-Id": "1", "X-Requester-Role": "internal"},
+    )
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "FORBIDDEN_SCOPE"
 
 
 def test_auth_test_enabled_defaults_true_in_dev(monkeypatch) -> None:
@@ -622,7 +600,9 @@ def test_post_era5_land_extract_point_rejects_invalid_coordinate_bounds(
 
     service = MeteoService()
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_meteo_extract_service", lambda: service, raising=False
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: service,
+        raising=False,
     )
     client = TestClient(app)
 
@@ -656,7 +636,9 @@ def test_post_ifs_forecast_extract_polygon_rejects_unclosed_ring(monkeypatch) ->
 
     service = MeteoService()
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_meteo_extract_service", lambda: service, raising=False
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: service,
+        raising=False,
     )
     client = TestClient(app)
 
@@ -743,7 +725,9 @@ def test_post_era5_land_extract_polygon_preserves_all_rings(monkeypatch) -> None
 
     service = MeteoService()
     monkeypatch.setattr(
-        "agro_gee_api.routes.gee.get_meteo_extract_service", lambda: service, raising=False
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: service,
+        raising=False,
     )
     client = TestClient(app)
 

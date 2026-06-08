@@ -29,3 +29,15 @@ def test_list_datasets_returns_only_active_items() -> None:
     assert len(result) == 1
     assert result[0].dataset_id == "COPERNICUS/S2_SR_HARMONIZED"
     assert result[0].bands == ["B2", "B3", "B4", "B8"]
+
+
+def test_list_datasets_uses_seeded_catalog_without_postgres() -> None:
+    service = GEECatalogService()
+
+    result = service.list_datasets()
+
+    assert len(result) == 1
+    assert result[0].dataset_id == "COPERNICUS/S2_SR_HARMONIZED"
+    assert result[0].provider == "gee"
+    assert result[0].title == "Sentinel-2 SR Harmonized"
+    assert result[0].bands == ["B2", "B3", "B4", "B8", "QA60"]

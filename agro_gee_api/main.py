@@ -1,16 +1,11 @@
 from pathlib import Path
 
-import psycopg
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 from agro_gee_api.routes.analytics import router as analytics_router
 from agro_gee_api.routes.auth import router as auth_router
-from agro_gee_api.routes.farms import router as farms_router
-from agro_gee_api.routes.fields import router as fields_router
 from agro_gee_api.routes.gee import router as gee_router
-from agro_gee_api.routes.users import router as users_router
-from agro_gee_api.routes.whatsapp import router as whatsapp_router
 
 app = FastAPI(title="Agro Insight API")
 
@@ -20,17 +15,6 @@ WEB_DIST_DIR = REPO_ROOT / "web" / "dist"
 app.include_router(auth_router)
 app.include_router(gee_router)
 app.include_router(analytics_router)
-app.include_router(whatsapp_router)
-app.include_router(users_router)
-app.include_router(farms_router)
-app.include_router(fields_router)
-
-
-@app.exception_handler(psycopg.OperationalError)
-def handle_db_operational_error(
-    request: object, exc: psycopg.OperationalError
-) -> JSONResponse:
-    return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
 
 @app.get("/health")

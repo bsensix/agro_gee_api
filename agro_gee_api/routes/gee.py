@@ -15,7 +15,6 @@ from agro_gee_api.routes._authz import (
 )
 from agro_gee_api.services.gee_catalog import (
     GEECatalogService,
-    PostgresGEECatalogRepository,
 )
 from agro_gee_api.services.gee_client import (
     DatasetExtractResult,
@@ -23,7 +22,10 @@ from agro_gee_api.services.gee_client import (
     GEEAuthError,
     GEEUnavailableError,
 )
-from agro_gee_api.services.gee_meteo_catalog import MeteoVariablePayload, get_dataset_catalog
+from agro_gee_api.services.gee_meteo_catalog import (
+    MeteoVariablePayload,
+    get_dataset_catalog,
+)
 from agro_gee_api.services.gee_meteo_extract import (
     GEETimeoutError as MeteoGEETimeoutError,
     MeteoExtractService,
@@ -127,7 +129,7 @@ class MeteoVariableResponse(BaseModel):
 
 
 def get_catalog_service() -> GEECatalogService:
-    return GEECatalogService(repository=PostgresGEECatalogRepository())
+    return GEECatalogService()
 
 
 def get_extract_service() -> Sentinel2ExtractService:
