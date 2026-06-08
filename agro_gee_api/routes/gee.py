@@ -39,7 +39,7 @@ from agro_gee_api.services.gee_sentinel2_extract import (
     ValidationError as ExtractValidationError,
 )
 
-router = APIRouter(prefix="/gee", tags=["gee"])
+router = APIRouter(prefix="/gee")
 
 _GEE_RUNTIME = GEERuntime()
 
@@ -111,7 +111,6 @@ class MeteoExtractPolygonRequest(BaseModel):
 class MeteoExtractSeriesItemResponse(BaseModel):
     date: str
     value: float
-    cloud_pct: float | None
 
 
 class MeteoExtractResponse(BaseModel):
@@ -337,12 +336,12 @@ def run_gee_auth_recheck() -> None:
     _GEE_RUNTIME.ensure_initialized(force_recheck=True)
 
 
-@router.get("/ping")
+@router.get("/ping", tags=["gee-core"])
 def ping() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/auth/test", response_model=GEEAuthTestResponse)
+@router.post("/auth/test", response_model=GEEAuthTestResponse, tags=["gee-core"])
 def post_gee_auth_test(
     authz: AuthzContext = Depends(get_authz_context),
 ) -> GEEAuthTestResponse | JSONResponse:
@@ -369,6 +368,7 @@ def post_gee_auth_test(
 @router.post(
     "/era5-land/extract/point",
     response_model=MeteoExtractResponse,
+    tags=["era5-land"],
 )
 def post_era5_land_extract_point(
     payload: MeteoExtractPointRequest,
@@ -379,6 +379,7 @@ def post_era5_land_extract_point(
 @router.post(
     "/era5-land/extract/polygon",
     response_model=MeteoExtractResponse,
+    tags=["era5-land"],
 )
 def post_era5_land_extract_polygon(
     payload: MeteoExtractPolygonRequest,
@@ -389,6 +390,7 @@ def post_era5_land_extract_polygon(
 @router.post(
     "/ifs-forecast/extract/point",
     response_model=MeteoExtractResponse,
+    tags=["ifs-forecast"],
 )
 def post_ifs_forecast_extract_point(
     payload: MeteoExtractPointRequest,
@@ -399,6 +401,7 @@ def post_ifs_forecast_extract_point(
 @router.post(
     "/ifs-forecast/extract/polygon",
     response_model=MeteoExtractResponse,
+    tags=["ifs-forecast"],
 )
 def post_ifs_forecast_extract_polygon(
     payload: MeteoExtractPolygonRequest,
@@ -409,6 +412,7 @@ def post_ifs_forecast_extract_polygon(
 @router.get(
     "/datasets/era5-land/variables",
     response_model=list[MeteoVariableResponse],
+    tags=["era5-land"],
 )
 def get_era5_land_variables() -> list[MeteoVariableResponse] | JSONResponse:
     try:
@@ -421,6 +425,7 @@ def get_era5_land_variables() -> list[MeteoVariableResponse] | JSONResponse:
 @router.get(
     "/datasets/ifs-forecast/variables",
     response_model=list[MeteoVariableResponse],
+    tags=["ifs-forecast"],
 )
 def get_ifs_forecast_variables() -> list[MeteoVariableResponse] | JSONResponse:
     try:
@@ -430,7 +435,7 @@ def get_ifs_forecast_variables() -> list[MeteoVariableResponse] | JSONResponse:
     return [MeteoVariableResponse(**item) for item in _sort_variable_catalog(variables)]
 
 
-@router.get("/datasets", response_model=list[GEEDatasetResponse])
+@router.get("/datasets", response_model=list[GEEDatasetResponse], tags=["gee-core"])
 def get_gee_datasets() -> list[GEEDatasetResponse]:
     service = get_catalog_service()
     items = service.list_datasets()
@@ -445,7 +450,11 @@ def get_gee_datasets() -> list[GEEDatasetResponse]:
     ]
 
 
-@router.post("/sentinel2/extract/point", response_model=Sentinel2ExtractValueResponse)
+@router.post(
+    "/sentinel2/extract/point",
+    response_model=Sentinel2ExtractValueResponse,
+    tags=["sentinel2"],
+)
 def post_sentinel2_extract_point(
     payload: Sentinel2ExtractPointRequest,
 ) -> Sentinel2ExtractValueResponse | JSONResponse:
@@ -502,7 +511,11 @@ def post_sentinel2_extract_point(
     )
 
 
-@router.post("/sentinel2/extract/polygon", response_model=Sentinel2ExtractValueResponse)
+@router.post(
+    "/sentinel2/extract/polygon",
+    response_model=Sentinel2ExtractValueResponse,
+    tags=["sentinel2"],
+)
 def post_sentinel2_extract_polygon(
     payload: Sentinel2ExtractPolygonRequest,
 ) -> Sentinel2ExtractValueResponse | JSONResponse:

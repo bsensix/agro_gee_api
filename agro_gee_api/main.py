@@ -7,7 +7,34 @@ from agro_gee_api.routes.analytics import router as analytics_router
 from agro_gee_api.routes.auth import router as auth_router
 from agro_gee_api.routes.gee import router as gee_router
 
-app = FastAPI(title="Agro Insight API")
+OPENAPI_TAGS = [
+    {
+        "name": "auth",
+        "description": "Authentication and authorization endpoints.",
+    },
+    {
+        "name": "analytics",
+        "description": "Analytics and reporting endpoints.",
+    },
+    {
+        "name": "gee-core",
+        "description": "Core Google Earth Engine health, auth, and dataset catalog endpoints.",
+    },
+    {
+        "name": "sentinel2",
+        "description": "Sentinel-2 extraction endpoints for point and polygon geometries.",
+    },
+    {
+        "name": "era5-land",
+        "description": "ERA5-Land extraction and variable catalog endpoints.",
+    },
+    {
+        "name": "ifs-forecast",
+        "description": "IFS forecast extraction and variable catalog endpoints.",
+    },
+]
+
+app = FastAPI(title="Agro Insight API", openapi_tags=OPENAPI_TAGS)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIST_DIR = REPO_ROOT / "web" / "dist"
