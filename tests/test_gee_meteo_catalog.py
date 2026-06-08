@@ -1,6 +1,9 @@
 import pytest
 
-from agro_gee_api.services.gee_meteo_catalog import get_dataset_catalog, list_dataset_variables
+from agro_gee_api.services.gee_meteo_catalog import (
+    get_dataset_catalog,
+    list_dataset_variables,
+)
 
 
 @pytest.mark.parametrize(
@@ -43,10 +46,58 @@ def test_get_dataset_catalog_unknown_key_raises_key_error() -> None:
                     "unit": "K",
                 },
                 {
+                    "variable": "potential_evaporation",
+                    "band_name": "potential_evaporation",
+                    "title": "Potential evaporation",
+                    "unit": "m",
+                },
+                {
+                    "variable": "skin_temperature",
+                    "band_name": "skin_temperature",
+                    "title": "Skin temperature",
+                    "unit": "K",
+                },
+                {
+                    "variable": "soil_temperature_level_1",
+                    "band_name": "soil_temperature_level_1",
+                    "title": "Soil temperature level 1",
+                    "unit": "K",
+                },
+                {
+                    "variable": "surface_net_solar_radiation",
+                    "band_name": "surface_net_solar_radiation",
+                    "title": "Surface net solar radiation",
+                    "unit": "J m-2",
+                },
+                {
+                    "variable": "temperature_2m",
+                    "band_name": "temperature_2m",
+                    "title": "Temperature at 2 m",
+                    "unit": "K",
+                },
+                {
                     "variable": "total_precipitation",
                     "band_name": "total_precipitation_hourly",
                     "title": "Total precipitation",
                     "unit": "m",
+                },
+                {
+                    "variable": "u_component_of_wind_10m",
+                    "band_name": "u_component_of_wind_10m",
+                    "title": "U wind component at 10 m",
+                    "unit": "m s-1",
+                },
+                {
+                    "variable": "v_component_of_wind_10m",
+                    "band_name": "v_component_of_wind_10m",
+                    "title": "V wind component at 10 m",
+                    "unit": "m s-1",
+                },
+                {
+                    "variable": "volumetric_soil_water_layer_1",
+                    "band_name": "volumetric_soil_water_layer_1",
+                    "title": "Volumetric soil water layer 1",
+                    "unit": "m3 m-3",
                 },
             ],
         ),
