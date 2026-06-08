@@ -55,6 +55,18 @@ def test_docker_compose_default_api_flow_has_no_mandatory_db_dependency() -> Non
     assert "POSTGRES_HOST" not in compose_text
 
 
+def test_docker_compose_does_not_define_db_service() -> None:
+    compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "\n  db:\n" not in compose_text
+
+
+def test_api_dockerfile_runtime_does_not_install_psycopg() -> None:
+    dockerfile_text = (
+        REPO_ROOT / "infrastructure" / "docker" / "api.Dockerfile"
+    ).read_text(encoding="utf-8")
+    assert "psycopg" not in dockerfile_text
+
+
 def test_env_example_does_not_define_postgres_baseline_variables() -> None:
     env_text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     assert "POSTGRES_DB=" not in env_text

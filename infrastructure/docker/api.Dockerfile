@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir fastapi uvicorn "psycopg[binary]" earthengine-api
+RUN pip install --no-cache-dir fastapi uvicorn earthengine-api
 
 COPY agro_gee_api /app/agro_gee_api
 
