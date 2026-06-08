@@ -577,10 +577,149 @@ def test_post_era5_land_extract_point_returns_extract_contract(monkeypatch) -> N
         "variable": "air_temperature_2m",
         "value": 301.15,
         "series": [
-            {"date": "2026-06-01T00:00:00Z", "value": 300.5, "cloud_pct": None},
-            {"date": "2026-06-10T00:00:00Z", "value": 301.8, "cloud_pct": None},
+            {"date": "2026-06-01T00:00:00Z", "value": 300.5},
+            {"date": "2026-06-10T00:00:00Z", "value": 301.8},
         ],
     }
+
+
+def test_post_era5_land_extract_polygon_series_items_expose_date_and_value_only(
+    monkeypatch,
+) -> None:
+    class MeteoService:
+        def extract_polygon(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["dataset_key"] == "era5-land"
+            return {
+                "dataset": "ECMWF/ERA5_LAND/HOURLY",
+                "variable": "air_temperature_2m",
+                "value": 300.0,
+                "series": [
+                    {
+                        "date": "2026-06-03T00:00:00Z",
+                        "value": 299.2,
+                        "cloud_pct": 25.0,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: MeteoService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/era5-land/extract/polygon",
+        json={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            },
+            "date_start": "2026-06-01",
+            "date_end": "2026-06-10",
+            "variable": "air_temperature_2m",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["series"] == [
+        {"date": "2026-06-03T00:00:00Z", "value": 299.2}
+    ]
+    assert "cloud_pct" not in response.json()["series"][0]
+
+
+def test_post_ifs_forecast_extract_point_series_items_expose_date_and_value_only(
+    monkeypatch,
+) -> None:
+    class MeteoService:
+        def extract_point(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["dataset_key"] == "ifs-forecast"
+            return {
+                "dataset": "ECMWF/NRT_FORECAST/IFS/OPER",
+                "variable": "surface_pressure",
+                "value": 100100.0,
+                "series": [
+                    {
+                        "date": "2026-06-01T06:00:00Z",
+                        "value": 100080.0,
+                        "cloud_pct": None,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: MeteoService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/ifs-forecast/extract/point",
+        json={
+            "coordinates": [-47.0, -15.0],
+            "date_start": "2026-06-01",
+            "date_end": "2026-06-10",
+            "variable": "surface_pressure",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["series"] == [
+        {"date": "2026-06-01T06:00:00Z", "value": 100080.0}
+    ]
+    assert "cloud_pct" not in response.json()["series"][0]
+
+
+def test_post_ifs_forecast_extract_polygon_series_items_expose_date_and_value_only(
+    monkeypatch,
+) -> None:
+    class MeteoService:
+        def extract_polygon(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["dataset_key"] == "ifs-forecast"
+            return {
+                "dataset": "ECMWF/NRT_FORECAST/IFS/OPER",
+                "variable": "surface_pressure",
+                "value": 100090.0,
+                "series": [
+                    {
+                        "date": "2026-06-01T12:00:00Z",
+                        "value": 100050.0,
+                        "cloud_pct": 5.0,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: MeteoService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/ifs-forecast/extract/polygon",
+        json={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            },
+            "date_start": "2026-06-01",
+            "date_end": "2026-06-10",
+            "variable": "surface_pressure",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["series"] == [
+        {"date": "2026-06-01T12:00:00Z", "value": 100050.0}
+    ]
+    assert "cloud_pct" not in response.json()["series"][0]
 
 
 def test_post_era5_land_extract_point_rejects_invalid_coordinate_bounds(
