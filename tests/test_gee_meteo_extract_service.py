@@ -125,7 +125,7 @@ def test_extract_polygon_delegates_dataset_and_variable_band_to_client() -> None
     }
     assert client.last_call == {
         "dataset_id": "ECMWF/NRT_FORECAST/IFS/OPER",
-        "band_name": "surface_pressure",
+        "band_name": "surface_pressure_sfc",
         "geometry_geojson": _polygon(),
         "date_start": "2026-06-01",
         "date_end": "2026-06-10",
@@ -185,23 +185,81 @@ def test_list_variables_returns_catalog_payload() -> None:
     assert variables == [
         {
             "variable": "air_temperature_2m",
-            "band_name": "2m_temperature",
+            "band_name": "temperature_2m_sfc",
             "title": "Air temperature at 2 m",
             "unit": "K",
         },
         {
+            "variable": "dewpoint_temperature_2m_sfc",
+            "band_name": "dewpoint_temperature_2m_sfc",
+            "title": "Dewpoint temperature at 2 m",
+            "unit": "K",
+        },
+        {
+            "variable": "potential_evaporation_sfc",
+            "band_name": "potential_evaporation_sfc",
+            "title": "Potential evaporation",
+            "unit": "m",
+        },
+        {
             "variable": "surface_pressure",
-            "band_name": "surface_pressure",
+            "band_name": "surface_pressure_sfc",
             "title": "Surface pressure",
             "unit": "Pa",
         },
         {
+            "variable": "temperature_2m_sfc",
+            "band_name": "temperature_2m_sfc",
+            "title": "Temperature at 2 m",
+            "unit": "K",
+        },
+        {
+            "variable": "total_precipitation_sfc",
+            "band_name": "total_precipitation_sfc",
+            "title": "Total precipitation",
+            "unit": "m",
+        },
+        {
+            "variable": "u_component_of_wind_10m_sfc",
+            "band_name": "u_component_of_wind_10m_sfc",
+            "title": "U wind component at 10 m",
+            "unit": "m s-1",
+        },
+        {
+            "variable": "v_component_of_wind_10m_sfc",
+            "band_name": "v_component_of_wind_10m_sfc",
+            "title": "V wind component at 10 m",
+            "unit": "m s-1",
+        },
+        {
+            "variable": "volumetric_soil_water_layer_1_sfc",
+            "band_name": "volumetric_soil_water_layer_1_sfc",
+            "title": "Volumetric soil water layer 1",
+            "unit": "m3 m-3",
+        },
+        {
             "variable": "wind_speed_10m",
-            "band_name": "10m_wind_speed",
+            "band_name": "u_component_of_wind_10m_sfc",
             "title": "Wind speed at 10 m",
             "unit": "m s-1",
         },
     ]
+
+
+def test_extract_point_accepts_total_precipitation_sfc_variable() -> None:
+    client = FakeMeteoClient()
+    service = MeteoExtractService(gee_client=client)
+
+    service.extract_point(
+        dataset_key="ifs-forecast",
+        geometry_geojson=_point(),
+        date_start=date(2026, 6, 1),
+        date_end=date(2026, 6, 10),
+        variable="total_precipitation_sfc",
+    )
+
+    assert client.last_call is not None
+    assert client.last_call["band_name"] == "total_precipitation_sfc"
 
 
 class TimeoutPointClient(FakeMeteoClient):
