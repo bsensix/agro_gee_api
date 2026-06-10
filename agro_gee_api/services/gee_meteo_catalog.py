@@ -166,6 +166,20 @@ _DATASET_CATALOGS: dict[str, MeteoDatasetCatalog] = {
             ),
         ),
     ),
+    "satellite-embedding-annual": MeteoDatasetCatalog(
+        key="satellite-embedding-annual",
+        dataset_id="GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        title="Satellite Embedding V1 Annual",
+        variables=tuple(
+            MeteoVariable(
+                variable=f"A{i:02d}",
+                band_name=f"A{i:02d}",
+                title=f"Embedding axis {i}",
+                unit="dimensionless",
+            )
+            for i in range(64)
+        ),
+    ),
 }
 
 

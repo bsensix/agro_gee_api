@@ -262,6 +262,70 @@ def test_extract_point_accepts_total_precipitation_sfc_variable() -> None:
     assert client.last_call["band_name"] == "total_precipitation_sfc"
 
 
+def test_satellite_embedding_extract_point_forwards_dataset_band_and_scale() -> None:
+    client = FakeMeteoClient()
+    service = MeteoExtractService(gee_client=client)
+
+    service.extract_point(
+        dataset_key="satellite-embedding-annual",
+        geometry_geojson=_point(),
+        date_start=date(2017, 1, 1),
+        date_end=date(2017, 1, 31),
+        variable="A00",
+    )
+
+    assert client.last_call == {
+        "dataset_id": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "band_name": "A00",
+        "geometry_geojson": _point(),
+        "date_start": "2017-01-01",
+        "date_end": "2017-01-31",
+        "scale": 10,
+    }
+
+
+def test_satellite_embedding_extract_polygon_accepts_long_window_and_forwards_scale() -> (
+    None
+):
+    client = FakeMeteoClient()
+    service = MeteoExtractService(gee_client=client)
+
+    service.extract_polygon(
+        dataset_key="satellite-embedding-annual",
+        geometry_geojson=_polygon(),
+        date_start=date(2015, 1, 1),
+        date_end=date(2025, 1, 1),
+        variable="A63",
+    )
+
+    assert client.last_call == {
+        "dataset_id": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "band_name": "A63",
+        "geometry_geojson": _polygon(),
+        "date_start": "2015-01-01",
+        "date_end": "2025-01-01",
+        "scale": 10,
+    }
+
+
+def test_satellite_embedding_extract_point_rejects_window_above_ten_years() -> None:
+    client = FakeMeteoClient()
+    service = MeteoExtractService(gee_client=client)
+
+    with pytest.raises(ValidationError) as exc:
+        service.extract_point(
+            dataset_key="satellite-embedding-annual",
+            geometry_geojson=_point(),
+            date_start=date(2014, 12, 31),
+            date_end=date(2025, 1, 1),
+            variable="A00",
+        )
+
+    assert exc.value.error_code == "INVALID_REQUEST"
+    assert "10 years" in exc.value.message
+    assert client.last_call is None
+
+
 class TimeoutPointClient(FakeMeteoClient):
     def extract_dataset_point(self, **kwargs: object) -> DatasetExtractResult:
         self.last_call = kwargs

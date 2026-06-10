@@ -22,6 +22,14 @@ def test_get_dataset_catalog_uses_expected_dataset_ids(
     assert catalog.dataset_id == dataset_id
 
 
+def test_get_dataset_catalog_satellite_embedding_annual_uses_expected_dataset_id() -> (
+    None
+):
+    catalog = get_dataset_catalog("satellite-embedding-annual")
+
+    assert catalog.dataset_id == "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
+
+
 def test_get_dataset_catalog_unknown_key_raises_key_error() -> None:
     with pytest.raises(KeyError, match="unknown"):
         get_dataset_catalog("unknown")
@@ -172,6 +180,22 @@ def test_list_dataset_variables_returns_exact_sorted_payload(
     key: str, expected: list[dict[str, str]]
 ) -> None:
     variables = list_dataset_variables(key)
+
+    assert variables == expected
+
+
+def test_list_dataset_variables_satellite_embedding_annual_returns_all_axes() -> None:
+    variables = list_dataset_variables("satellite-embedding-annual")
+
+    expected = [
+        {
+            "variable": f"A{i:02d}",
+            "band_name": f"A{i:02d}",
+            "title": f"Embedding axis {i}",
+            "unit": "dimensionless",
+        }
+        for i in range(64)
+    ]
 
     assert variables == expected
 

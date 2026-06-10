@@ -32,6 +32,10 @@ OPENAPI_TAGS = [
         "name": "ifs-forecast",
         "description": "IFS forecast extraction and variable catalog endpoints.",
     },
+    {
+        "name": "satellite-embedding-annual",
+        "description": "Satellite Embedding Annual extraction and variable catalog endpoints.",
+    },
 ]
 
 app = FastAPI(title="Agro Insight API", openapi_tags=OPENAPI_TAGS)

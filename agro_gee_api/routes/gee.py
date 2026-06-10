@@ -151,6 +151,7 @@ class _MeteoRouteClient:
         geometry_geojson: dict[str, object],
         date_start: str,
         date_end: str,
+        scale: int | None = None,
     ) -> DatasetExtractResult:
         return self._gee_client.extract_point_dataset(
             dataset_id=dataset_id,
@@ -159,6 +160,7 @@ class _MeteoRouteClient:
             geometry_geojson=geometry_geojson,
             date_start=date_start,
             date_end=date_end,
+            scale=scale,
         )
 
     def extract_dataset_polygon(
@@ -169,6 +171,7 @@ class _MeteoRouteClient:
         geometry_geojson: dict[str, object],
         date_start: str,
         date_end: str,
+        scale: int | None = None,
     ) -> DatasetExtractResult:
         return self._gee_client.extract_polygon_dataset(
             dataset_id=dataset_id,
@@ -177,6 +180,7 @@ class _MeteoRouteClient:
             geometry_geojson=geometry_geojson,
             date_start=date_start,
             date_end=date_end,
+            scale=scale,
         )
 
 
@@ -409,6 +413,32 @@ def post_ifs_forecast_extract_polygon(
     return _meteo_extract_polygon(dataset_key="ifs-forecast", payload=payload)
 
 
+@router.post(
+    "/satellite-embedding-annual/extract/point",
+    response_model=MeteoExtractResponse,
+    tags=["satellite-embedding-annual"],
+)
+def post_satellite_embedding_annual_extract_point(
+    payload: MeteoExtractPointRequest,
+) -> MeteoExtractResponse | JSONResponse:
+    return _meteo_extract_point(
+        dataset_key="satellite-embedding-annual", payload=payload
+    )
+
+
+@router.post(
+    "/satellite-embedding-annual/extract/polygon",
+    response_model=MeteoExtractResponse,
+    tags=["satellite-embedding-annual"],
+)
+def post_satellite_embedding_annual_extract_polygon(
+    payload: MeteoExtractPolygonRequest,
+) -> MeteoExtractResponse | JSONResponse:
+    return _meteo_extract_polygon(
+        dataset_key="satellite-embedding-annual", payload=payload
+    )
+
+
 @router.get(
     "/datasets/era5-land/variables",
     response_model=list[MeteoVariableResponse],
@@ -430,6 +460,23 @@ def get_era5_land_variables() -> list[MeteoVariableResponse] | JSONResponse:
 def get_ifs_forecast_variables() -> list[MeteoVariableResponse] | JSONResponse:
     try:
         variables = get_meteo_extract_service().list_variables("ifs-forecast")
+    except Exception as exc:
+        return _error_response(_map_meteo_error(exc))
+    return [MeteoVariableResponse(**item) for item in _sort_variable_catalog(variables)]
+
+
+@router.get(
+    "/datasets/satellite-embedding-annual/variables",
+    response_model=list[MeteoVariableResponse],
+    tags=["satellite-embedding-annual"],
+)
+def get_satellite_embedding_annual_variables() -> (
+    list[MeteoVariableResponse] | JSONResponse
+):
+    try:
+        variables = get_meteo_extract_service().list_variables(
+            "satellite-embedding-annual"
+        )
     except Exception as exc:
         return _error_response(_map_meteo_error(exc))
     return [MeteoVariableResponse(**item) for item in _sort_variable_catalog(variables)]

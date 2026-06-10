@@ -1200,3 +1200,237 @@ def test_get_ifs_forecast_variables_returns_bare_sorted_array(monkeypatch) -> No
             "unit": "m s-1",
         },
     ]
+
+
+def test_post_satellite_embedding_extract_point_returns_extract_contract(
+    monkeypatch,
+) -> None:
+    class ExtractService:
+        def extract_point(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["dataset_key"] == "satellite-embedding-annual"
+            assert kwargs["variable"] == "A00"
+            return {
+                "dataset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+                "variable": "A00",
+                "value": 0.512,
+                "series": [
+                    {
+                        "date": "2017-01-01T00:00:00Z",
+                        "value": 0.501,
+                        "cloud_pct": None,
+                    },
+                    {
+                        "date": "2017-12-31T00:00:00Z",
+                        "value": 0.523,
+                        "cloud_pct": None,
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: ExtractService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/satellite-embedding-annual/extract/point",
+        json={
+            "coordinates": [-47.0, -15.0],
+            "date_start": "2017-01-01",
+            "date_end": "2017-12-31",
+            "variable": "A00",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dataset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "variable": "A00",
+        "value": 0.512,
+        "series": [
+            {"date": "2017-01-01T00:00:00Z", "value": 0.501},
+            {"date": "2017-12-31T00:00:00Z", "value": 0.523},
+        ],
+    }
+
+
+def test_post_satellite_embedding_extract_polygon_returns_extract_contract(
+    monkeypatch,
+) -> None:
+    class ExtractService:
+        def extract_polygon(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["dataset_key"] == "satellite-embedding-annual"
+            assert kwargs["variable"] == "A63"
+            return {
+                "dataset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+                "variable": "A63",
+                "value": 0.711,
+                "series": [
+                    {
+                        "date": "2018-01-01T00:00:00Z",
+                        "value": 0.701,
+                        "cloud_pct": 2.0,
+                    },
+                    {
+                        "date": "2018-12-31T00:00:00Z",
+                        "value": 0.721,
+                        "cloud_pct": 4.0,
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: ExtractService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/satellite-embedding-annual/extract/polygon",
+        json={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            },
+            "date_start": "2018-01-01",
+            "date_end": "2018-12-31",
+            "variable": "A63",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dataset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "variable": "A63",
+        "value": 0.711,
+        "series": [
+            {"date": "2018-01-01T00:00:00Z", "value": 0.701},
+            {"date": "2018-12-31T00:00:00Z", "value": 0.721},
+        ],
+    }
+
+
+def test_get_satellite_embedding_variables_returns_bare_sorted_array(
+    monkeypatch,
+) -> None:
+    class ExtractService:
+        def list_variables(self, dataset_key: str) -> list[dict[str, str]]:
+            assert dataset_key == "satellite-embedding-annual"
+            return [
+                {
+                    "variable": "A63",
+                    "band_name": "A63",
+                    "title": "Embedding axis 63",
+                    "unit": "dimensionless",
+                },
+                {
+                    "variable": "A00",
+                    "band_name": "A00",
+                    "title": "Embedding axis 0",
+                    "unit": "dimensionless",
+                },
+                {
+                    "variable": "A10",
+                    "band_name": "A10",
+                    "title": "Embedding axis 10",
+                    "unit": "dimensionless",
+                },
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: ExtractService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.get("/gee/datasets/satellite-embedding-annual/variables")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "variable": "A00",
+            "band_name": "A00",
+            "title": "Embedding axis 0",
+            "unit": "dimensionless",
+        },
+        {
+            "variable": "A10",
+            "band_name": "A10",
+            "title": "Embedding axis 10",
+            "unit": "dimensionless",
+        },
+        {
+            "variable": "A63",
+            "band_name": "A63",
+            "title": "Embedding axis 63",
+            "unit": "dimensionless",
+        },
+    ]
+
+
+def test_post_satellite_embedding_extract_point_maps_service_validation_error(
+    monkeypatch,
+) -> None:
+    class ExtractService:
+        def extract_point(self, **kwargs: object) -> dict[str, object]:
+            raise MeteoValidationError("INVALID_REQUEST", "Unsupported variable")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: ExtractService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/satellite-embedding-annual/extract/point",
+        json={
+            "coordinates": [-47.0, -15.0],
+            "date_start": "2017-01-01",
+            "date_end": "2017-12-31",
+            "variable": "A99",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INVALID_REQUEST"
+
+
+def test_post_satellite_embedding_extract_polygon_maps_service_timeout(
+    monkeypatch,
+) -> None:
+    class ExtractService:
+        def extract_polygon(self, **kwargs: object) -> dict[str, object]:
+            raise MeteoGEETimeoutError("GEE_TIMEOUT", "timeout", retryable=True)
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_meteo_extract_service",
+        lambda: ExtractService(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/satellite-embedding-annual/extract/polygon",
+        json={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            },
+            "date_start": "2018-01-01",
+            "date_end": "2018-12-31",
+            "variable": "A00",
+        },
+    )
+
+    assert response.status_code == 504
+    assert response.json()["error_code"] == "GEE_TIMEOUT"
+    assert response.json()["retryable"] is True

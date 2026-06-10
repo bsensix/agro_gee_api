@@ -66,6 +66,18 @@ def test_gee_openapi_operations_have_expected_single_tags() -> None:
         ("/gee/ifs-forecast/extract/point", "POST"): "ifs-forecast",
         ("/gee/ifs-forecast/extract/polygon", "POST"): "ifs-forecast",
         ("/gee/datasets/ifs-forecast/variables", "GET"): "ifs-forecast",
+        (
+            "/gee/satellite-embedding-annual/extract/point",
+            "POST",
+        ): "satellite-embedding-annual",
+        (
+            "/gee/satellite-embedding-annual/extract/polygon",
+            "POST",
+        ): "satellite-embedding-annual",
+        (
+            "/gee/datasets/satellite-embedding-annual/variables",
+            "GET",
+        ): "satellite-embedding-annual",
     }
 
     for operation_key, expected_tag in expected_tags_by_operation.items():
@@ -77,7 +89,13 @@ def test_all_gee_operations_use_single_allowed_non_generic_tag() -> None:
     client = TestClient(app)
     operations = _openapi_operations(client)
 
-    allowed_gee_tags = {"gee-core", "sentinel2", "era5-land", "ifs-forecast"}
+    allowed_gee_tags = {
+        "gee-core",
+        "sentinel2",
+        "era5-land",
+        "ifs-forecast",
+        "satellite-embedding-annual",
+    }
     gee_operations = {
         op_key: op for op_key, op in operations.items() if op_key[0].startswith("/gee")
     }
@@ -104,6 +122,7 @@ def test_openapi_global_tag_metadata_order_and_descriptions() -> None:
         "sentinel2",
         "era5-land",
         "ifs-forecast",
+        "satellite-embedding-annual",
     ]
 
     schema_tags = response.json().get("tags", [])
