@@ -4,9 +4,9 @@
   <img src="logo_api.png" width="300"/>
 </p>
 
-API backend do projeto Agro Insight para extracao de dados geoespaciais (Google Earth Engine), contratos agrometeorologicos em `/agro` e endpoints de suporte de plataforma.
+API backend focada exclusivamente em servicos HTTP para extracao de dados geoespaciais (Google Earth Engine), contratos do dominio `/agro` e endpoints de suporte de plataforma.
 
-## Estado atual do projeto
+## Estado atual
 
 Arquitetura atual:
 
@@ -132,7 +132,68 @@ docker compose down
 
 Observacao: `POSTGRES_*` nao e obrigatorio no fluxo principal atual.
 
-## Como implementar e evoluir esta API
+## Tutorial: cadastrar projeto no GEE para uso na API
+
+Para os endpoints de extracao em `/gee` funcionarem, seu projeto no Google Cloud precisa estar habilitado no Earth Engine.
+
+1. Crie (ou escolha) um projeto no Google Cloud
+   - acesse `https://console.cloud.google.com/`
+   - anote o ID do projeto (sera usado em `GEE_PROJECT_ID`)
+
+2. Ative as APIs necessarias
+   - no projeto, habilite:
+     - `Earth Engine API`
+     - `Google Cloud Storage` (recomendado para fluxos de export)
+
+3. Registre/habilite o projeto no Earth Engine
+   - acesse `https://code.earthengine.google.com/register`
+   - selecione o mesmo projeto do passo 1
+   - conclua o cadastro/aceite de termos da conta que vai operar a API
+
+4. Escolha o modo de autenticacao da API
+
+   Opcao A (recomendada em servidor): Service Account
+   - crie uma Service Account no Google Cloud
+   - gere uma chave JSON
+   - configure:
+     - `GEE_AUTH_MODE=service_account`
+     - `GEE_PROJECT_ID=<seu-projeto>`
+     - `GEE_SERVICE_ACCOUNT_EMAIL=<email-da-service-account>`
+     - `GEE_PRIVATE_KEY=<private_key do JSON, com \n escapado>`
+
+   Opcao B (desenvolvimento local): OAuth
+   - crie credenciais OAuth Client no Google Cloud
+   - obtenha refresh token da conta com acesso ao Earth Engine
+   - configure:
+     - `GEE_AUTH_MODE=oauth`
+     - `GEE_PROJECT_ID=<seu-projeto>`
+     - `GEE_OAUTH_CLIENT_ID=<client_id>`
+     - `GEE_OAUTH_CLIENT_SECRET=<client_secret>`
+     - `GEE_OAUTH_REFRESH_TOKEN=<refresh_token>`
+
+5. Suba a API com as variaveis
+   - via Docker Compose ou execucao local com `uvicorn`
+
+6. Valide se o GEE esta operacional
+   - chame um endpoint de extracao `/gee` com payload valido
+   - se houver problema de credencial/projeto, a API retorna erro de autenticacao (ex.: `GEE_AUTH_FAILED`)
+
+Exemplo minimo de variaveis para Service Account (`.env`):
+
+```env
+GEE_AUTH_MODE=service_account
+GEE_PROJECT_ID=seu-projeto-gcp
+GEE_SERVICE_ACCOUNT_EMAIL=sa-gee@seu-projeto-gcp.iam.gserviceaccount.com
+GEE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Boas praticas:
+
+- nunca versionar segredos em git
+- usar secret manager no ambiente de producao
+- rotacionar chaves periodicamente
+
+## Como implementar e evoluir a API
 
 Este projeto esta organizado para evolucao por dominio (`routes` + `services`). Um fluxo pratico para implementar novas features:
 
