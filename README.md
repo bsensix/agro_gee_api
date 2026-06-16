@@ -130,7 +130,7 @@ docker compose down
 - `GEE_OAUTH_REFRESH_TOKEN`
 - `GEE_AUTH_TEST_ENABLED`
 
-Observacao: `POSTGRES_*` nao e obrigatorio no fluxo principal atual.
+Observacao: o fluxo principal da API e stateless e nao depende de banco relacional.
 
 ## Tutorial: cadastrar projeto no GEE para uso na API
 
@@ -186,66 +186,3 @@ GEE_PROJECT_ID=seu-projeto-gcp
 GEE_SERVICE_ACCOUNT_EMAIL=sa-gee@seu-projeto-gcp.iam.gserviceaccount.com
 GEE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
-
-Boas praticas:
-
-- nunca versionar segredos em git
-- usar secret manager no ambiente de producao
-- rotacionar chaves periodicamente
-
-## Como implementar e evoluir a API
-
-Este projeto esta organizado para evolucao por dominio (`routes` + `services`). Um fluxo pratico para implementar novas features:
-
-1. Defina o contrato HTTP primeiro
-   - payload de entrada (Pydantic), resposta e codigos de erro.
-   - mantenha nomenclatura consistente com os dominios atuais.
-
-2. Implemente a regra de negocio em `services`
-   - extraia calculos/integracoes para `agro_gee_api/services/*`.
-   - deixe a rota fina: validacao, chamada de servico, mapeamento de erro.
-
-3. Exponha a rota em `routes`
-   - adicione endpoint no arquivo do dominio (`routes/agro.py`, `routes/gee.py` etc.).
-   - reaproveite o padrao de `DomainError` + `JSONResponse` ja usado no projeto.
-
-4. Registre no app principal
-   - inclua o router em `agro_gee_api/main.py` (se for dominio novo).
-   - ajuste tags OpenAPI para manter a documentacao organizada.
-
-5. Cubra com testes
-   - adicione testes de contrato e cenarios de erro em `tests/`.
-   - rode `pytest -v` antes de publicar.
-
-6. Entregue por ambiente
-   - valide local com `uvicorn`.
-   - valide container com `docker compose up -d --build`.
-   - use `/health` e `/docs` como checks rapidos de deploy.
-
-### Exemplo de extensao (novo endpoint `/agro`)
-
-- criar request/response em `agro_gee_api/routes/agro.py`
-- criar calculo em `agro_gee_api/services/agro_engine.py` (ou novo servico dedicado)
-- mapear erros para `error_code` estavel
-- adicionar testes para `200`, `400` e erros de dominio (`422/503/504` quando aplicavel)
-- validar contrato no `openapi.json`
-
-## Testes
-
-```bash
-pip install -e .[dev]
-pytest -v
-```
-
-## Notas de compatibilidade
-
-- endpoints legados removidos: `/users`, `/farms`, `/fields`, `/whatsapp`
-- clientes devem usar os dominios atuais (`/auth`, `/analytics`, `/gee`, `/agro`, `/health`)
-
-## Seguranca baseline
-
-Checklist inicial em `docs/security-baseline.md` para:
-
-- gestao de segredos
-- atualizacao de dependencias
-- validacao por CI

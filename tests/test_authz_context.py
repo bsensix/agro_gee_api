@@ -1,7 +1,7 @@
 from agro_gee_api.routes._authz import get_authz_context
 
 
-def test_get_authz_context_is_header_driven_and_postgres_free() -> None:
+def test_get_authz_context_is_header_driven_and_db_free() -> None:
     context = get_authz_context(x_user_id="1", x_requester_role=" Internal ")
 
     assert context.requester_user_id == 1

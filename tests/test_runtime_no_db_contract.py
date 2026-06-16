@@ -27,15 +27,11 @@ def _has_forbidden_import(module_path: Path) -> bool:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 name = alias.name
-                if name == "psycopg" or name.startswith("psycopg."):
-                    return True
                 if name == "agro_gee_api.db" or name.startswith("agro_gee_api.db."):
                     return True
 
         if isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
-            if module_name == "psycopg" or module_name.startswith("psycopg."):
-                return True
             if module_name == "agro_gee_api.db" or module_name.startswith(
                 "agro_gee_api.db."
             ):
@@ -44,15 +40,15 @@ def _has_forbidden_import(module_path: Path) -> bool:
     return False
 
 
-def test_runtime_dependency_excludes_psycopg() -> None:
+def test_runtime_dependency_excludes_db_driver() -> None:
     pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert "psycopg" not in pyproject_text
+    assert "agro_gee_api.db" not in pyproject_text
 
 
 def test_docker_compose_default_api_flow_has_no_mandatory_db_dependency() -> None:
     compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     assert "depends_on" not in compose_text
-    assert "POSTGRES_HOST" not in compose_text
+    assert "DB_HOST" not in compose_text
 
 
 def test_docker_compose_does_not_define_db_service() -> None:
@@ -60,22 +56,22 @@ def test_docker_compose_does_not_define_db_service() -> None:
     assert "\n  db:\n" not in compose_text
 
 
-def test_api_dockerfile_runtime_does_not_install_psycopg() -> None:
+def test_api_dockerfile_runtime_does_not_install_db_driver() -> None:
     dockerfile_text = (
         REPO_ROOT / "infrastructure" / "docker" / "api.Dockerfile"
     ).read_text(encoding="utf-8")
-    assert "psycopg" not in dockerfile_text
+    assert "agro_gee_api.db" not in dockerfile_text
 
 
-def test_env_example_does_not_define_postgres_baseline_variables() -> None:
+def test_env_example_does_not_define_legacy_db_baseline_variables() -> None:
     env_text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
-    assert "POSTGRES_DB=" not in env_text
-    assert "POSTGRES_USER=" not in env_text
-    assert "POSTGRES_PASSWORD=" not in env_text
-    assert "POSTGRES_PORT=" not in env_text
+    assert "DB_NAME=" not in env_text
+    assert "DB_USER=" not in env_text
+    assert "DB_PASSWORD=" not in env_text
+    assert "DB_PORT=" not in env_text
 
 
-def test_active_runtime_modules_do_not_import_psycopg_or_db_module() -> None:
+def test_active_runtime_modules_do_not_import_db_module() -> None:
     offending_modules = [
         str(path.relative_to(REPO_ROOT))
         for path in ACTIVE_RUNTIME_MODULES

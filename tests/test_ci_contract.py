@@ -16,7 +16,7 @@ def test_ci_workflow_contract_baseline() -> None:
     assert "run: pytest" in content
 
 
-def test_ci_workflow_contract_postgres_free_default() -> None:
+def test_ci_workflow_contract_db_free_default() -> None:
     workflow_path = (
         Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
     )

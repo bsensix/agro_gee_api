@@ -31,7 +31,7 @@ def test_list_datasets_returns_only_active_items() -> None:
     assert result[0].bands == ["B2", "B3", "B4", "B8"]
 
 
-def test_list_datasets_uses_seeded_catalog_without_postgres() -> None:
+def test_list_datasets_uses_seeded_catalog_without_db_dependency() -> None:
     service = GEECatalogService()
 
     result = service.list_datasets()

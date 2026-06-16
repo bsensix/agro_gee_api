@@ -1,29 +1,21 @@
 # Guia rapido de teste da API GEE
 
-Este guia mostra como validar a autenticacao no Google Earth Engine (GEE) e testar os endpoints da API quando voce puder voltar ao ambiente.
+Este guia mostra como validar autenticacao no Google Earth Engine (GEE) e testar os endpoints ativos da API.
 
-## 1) Subir servicos
+## 1) Subir a API
 
-No diretorio raiz do projeto, rode:
-
-```bash
-docker compose up -d --build db api
-```
-
-Verifique se subiram:
+No diretorio raiz do projeto:
 
 ```bash
+docker compose up -d --build
 docker compose ps
 ```
 
-Esperado:
-
-- `agro-insight-db-1` em `0.0.0.0:15432->5432`
-- `agro-insight-api-1` em `0.0.0.0:8000->8000`
+Esperado: servico da API em execucao na porta `8000`.
 
 ## 2) Configurar credenciais GEE no `.env`
 
-Crie/edite um arquivo `.env` na raiz do projeto com:
+Crie/edite `.env` na raiz com:
 
 ```env
 GEE_AUTH_MODE=service_account
@@ -33,71 +25,52 @@ GEE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
 GEE_AUTH_TEST_ENABLED=true
 ```
 
-Observacoes:
+Opcao OAuth (desenvolvimento):
 
-- O runtime ja converte `\\n` para quebra de linha real na chave privada.
-- Se quiser usar OAuth:
-  - `GEE_AUTH_MODE=oauth`
-  - `GEE_OAUTH_CLIENT_ID`, `GEE_OAUTH_CLIENT_SECRET`, `GEE_OAUTH_REFRESH_TOKEN`
+- `GEE_AUTH_MODE=oauth`
+- `GEE_OAUTH_CLIENT_ID`
+- `GEE_OAUTH_CLIENT_SECRET`
+- `GEE_OAUTH_REFRESH_TOKEN`
 
-## 3) Rebuild da API apos mudar `.env`
-
-Sempre que alterar credenciais/env, rode:
+## 3) Rebuild apos alterar variaveis
 
 ```bash
-docker compose up -d --build api
+docker compose up -d --build
 ```
 
-## 4) Abrir Swagger
+## 4) Abrir documentacao
 
-- Docs: `http://localhost:8000/docs`
+- Swagger: `http://localhost:8000/docs`
 - OpenAPI: `http://localhost:8000/openapi.json`
 
-## 5) Criar usuario para testar endpoint protegido
+## 5) Testar autenticacao GEE
 
-O endpoint `POST /gee/auth/test` exige `X-User-Id` com privilegio admin/internal.
+Endpoint: `POST /gee/auth/test`
 
-### Criar usuario
+Headers:
 
-No Swagger, use `POST /users` com payload exemplo:
-
-```json
-{
-  "name": "Admin GEE",
-  "email": "admin.gee@example.com",
-  "role": "internal"
-}
-```
-
-Guarde o `user_id` retornado.
-
-## 6) Testar autenticacao GEE
-
-No Swagger:
-
-- Endpoint: `POST /gee/auth/test`
-- Header: `X-User-Id: <user_id_internal_ou_admin>`
+- `X-User-Id: 1`
+- `X-Requester-Role: internal` (ou `admin`)
 
 Resultados esperados:
 
-- `200` com `{"status":"ok"}` quando autenticado no GEE
+- `200` com `{"status":"ok"}` quando autenticado
 - `500` com `GEE_AUTH_FAILED` se credencial invalida
-- `503` com `GEE_UNAVAILABLE` em falha externa/rede
+- `503` com `GEE_UNAVAILABLE` em indisponibilidade externa
 - `404` se `GEE_AUTH_TEST_ENABLED=false`
-- `403` se `X-User-Id` sem privilegio
+- `403` sem permissao de role
 
-## 7) Testar endpoints GEE de dados
+## 6) Testar endpoints de dados
 
-No Swagger, valide estes endpoints:
+Valide no Swagger:
 
 - `GET /gee/datasets`
 - `POST /gee/sentinel2/extract/point`
 - `POST /gee/sentinel2/extract/polygon`
-- `POST /gee/sentinel2/timeseries`
-- `POST /gee/sentinel2/image`
-- `POST /gee/sentinel2/stats`
+- `POST /gee/era5-land/extract/point`
+- `POST /gee/era5-land/extract/polygon`
 
-### Payload exemplo: extract point
+### Payload exemplo: Sentinel-2 point
 
 ```json
 {
@@ -108,7 +81,7 @@ No Swagger, valide estes endpoints:
 }
 ```
 
-### Payload exemplo: extract polygon / timeseries / image
+### Payload exemplo: Sentinel-2 polygon
 
 ```json
 {
@@ -124,44 +97,12 @@ No Swagger, valide estes endpoints:
 }
 ```
 
-### Payload exemplo: stats
-
-```json
-{
-  "field_id": 10,
-  "date_start": "2026-06-01",
-  "date_end": "2026-06-10",
-  "metric": "ndvi_mean"
-}
-```
-
-Observacao: para `stats`, o `field_id` precisa existir e o `X-User-Id` precisa ter escopo para esse campo.
-
-## 8) Troubleshooting rapido
+## 7) Troubleshooting rapido
 
 ### So aparece `/gee/ping` no Swagger
 
 ```bash
-docker compose up -d --build api
+docker compose up -d --build
 ```
 
-Depois faca hard refresh no navegador (`Ctrl+F5`).
-
-### Erro de conexao no banco em cliente SQL
-
-Use:
-
-- Host: `localhost`
-- Porta: `15432`
-- Database: `agro_insight`
-- User: `postgres`
-- Password: `postgres`
-
-### Porta 15432 ocupada
-
-Pare outro container Postgres antes de subir:
-
-```bash
-docker ps
-docker stop <container>
-```
+Depois faca refresh forcado no navegador (`Ctrl+F5`).
