@@ -123,6 +123,9 @@ def test_openapi_global_tag_metadata_order_and_descriptions() -> None:
         "era5-land",
         "ifs-forecast",
         "satellite-embedding-annual",
+        "agro-phenology",
+        "agro-water",
+        "agro-thermal",
     ]
 
     schema_tags = response.json().get("tags", [])
@@ -131,3 +134,49 @@ def test_openapi_global_tag_metadata_order_and_descriptions() -> None:
         isinstance(tag.get("description"), str) and tag.get("description", "").strip()
         for tag in schema_tags
     )
+
+
+def test_agro_openapi_operations_have_expected_single_tags() -> None:
+    client = TestClient(app)
+    operations = _openapi_operations(client)
+
+    expected_tags_by_operation = {
+        ("/agro/phenology/estimate/point", "POST"): "agro-phenology",
+        ("/agro/phenology/estimate/polygon", "POST"): "agro-phenology",
+        ("/agro/et0-etc/point", "POST"): "agro-water",
+        ("/agro/et0-etc/polygon", "POST"): "agro-water",
+        ("/agro/water-balance/simple/point", "POST"): "agro-water",
+        ("/agro/water-balance/simple/polygon", "POST"): "agro-water",
+        ("/agro/water-status/point", "POST"): "agro-water",
+        ("/agro/water-status/polygon", "POST"): "agro-water",
+        ("/agro/thermal-risk/point", "POST"): "agro-thermal",
+        ("/agro/thermal-risk/polygon", "POST"): "agro-thermal",
+    }
+
+    for operation_key, expected_tag in expected_tags_by_operation.items():
+        assert operation_key in operations
+        operation = operations[operation_key]
+        assert operation.get("tags") == [expected_tag]
+
+
+def test_agro_operations_use_single_allowed_non_generic_tag() -> None:
+    client = TestClient(app)
+    operations = _openapi_operations(client)
+
+    allowed_agro_tags = {
+        "agro-phenology",
+        "agro-water",
+        "agro-thermal",
+    }
+    agro_operations = {
+        op_key: op for op_key, op in operations.items() if op_key[0].startswith("/agro")
+    }
+
+    assert agro_operations
+
+    for operation in agro_operations.values():
+        tags = operation.get("tags")
+        assert isinstance(tags, list)
+        assert len(tags) == 1
+        assert tags[0] in allowed_agro_tags
+        assert tags[0] != "agro"

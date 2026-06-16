@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from agro_gee_api.routes.analytics import router as analytics_router
+from agro_gee_api.routes.agro import router as agro_router
 from agro_gee_api.routes.auth import router as auth_router
 from agro_gee_api.routes.gee import router as gee_router
 
@@ -36,6 +37,18 @@ OPENAPI_TAGS = [
         "name": "satellite-embedding-annual",
         "description": "Satellite Embedding Annual extraction and variable catalog endpoints.",
     },
+    {
+        "name": "agro-phenology",
+        "description": "Phenology estimation endpoints for point and polygon geometries.",
+    },
+    {
+        "name": "agro-water",
+        "description": "Water demand, balance, and status endpoints for agro operations.",
+    },
+    {
+        "name": "agro-thermal",
+        "description": "Thermal risk endpoints for point and polygon geometries.",
+    },
 ]
 
 app = FastAPI(title="Agro Insight API", openapi_tags=OPENAPI_TAGS)
@@ -46,6 +59,7 @@ WEB_DIST_DIR = REPO_ROOT / "web" / "dist"
 app.include_router(auth_router)
 app.include_router(gee_router)
 app.include_router(analytics_router)
+app.include_router(agro_router)
 
 
 @app.get("/health")

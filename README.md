@@ -20,8 +20,34 @@ Rotas principais por dominio:
 
 - `auth`: `/auth`
 - `analytics`: `/analytics`
+- `agro`: `/agro`
 - `gee`: `/gee`
 - `health`: `/health`
+
+## Dominio `/agro` (v1)
+
+O dominio `/agro` expoe endpoints de suporte agrometeorologico com contratos estaveis para estimativa fenologica, demanda hidrica, balanco simplificado e risco termico.
+
+Lista de endpoints `/agro` disponiveis na versao atual:
+
+- `POST /agro/phenology/estimate/point`
+- `POST /agro/phenology/estimate/polygon`
+- `POST /agro/et0-etc/point`
+- `POST /agro/et0-etc/polygon`
+- `POST /agro/water-balance/simple/point`
+- `POST /agro/water-balance/simple/polygon`
+- `POST /agro/water-status/point`
+- `POST /agro/water-status/polygon`
+- `POST /agro/thermal-risk/point`
+- `POST /agro/thermal-risk/polygon`
+
+## v1 limits and assumptions
+
+- perfis agronomicos genericos `v1_default` para `soybean`, `corn` e `cotton`
+- ET0 calculada por Hargreaves-Samani
+- balanco hidrico com modelo de balde simples
+- `date_harvest` com papel apenas informativo
+- completude de poligono valida somente quando `valid_ratio >= 0.60`
 
 ## Stack e arquitetura
 
@@ -85,6 +111,18 @@ pytest -v
 - Rotas removidas (`/users`, `/farms`, `/fields`, `/whatsapp/ping`):
   - esperado: retornar `404` e nao aparecer no `openapi.json`
   - observado: validacao confirmada em `test_removed_core_domains_return_404` e `test_openapi_does_not_expose_removed_core_domains`
+- Task 11 - integracao `/agro`:
+  - comando: `pytest tests/test_agro_integration.py -v`
+  - esperado: todos os cenarios de integracao `/agro` e smokes nao-regressivos de `/gee` passarem
+  - observado: `12 passed`
+- Task 11 - regressao da suite completa:
+  - comando: `pytest -v`
+  - esperado: suite completa verde sem regressao causada pelo trabalho de `/agro`
+  - observado: `243 passed, 1 deselected`
+- Task 11 - contrato OpenAPI de `/agro`:
+  - comando: `python -c "from fastapi.testclient import TestClient; from agro_gee_api.main import app; paths=sorted([p for p in TestClient(app).get('/openapi.json').json()['paths'] if p.startswith('/agro/')]); print('agro_paths_count=' + str(len(paths))); print('agro_paths=' + ', '.join(paths))"`
+  - esperado: `openapi.json` expor exatamente 10 rotas `/agro` previstas para v1
+  - observado: `agro_paths_count=10` com todas as rotas v1 (`/agro/phenology/estimate/*`, `/agro/et0-etc/*`, `/agro/water-balance/simple/*`, `/agro/water-status/*`, `/agro/thermal-risk/*`)
 
 ## Breaking change
 
