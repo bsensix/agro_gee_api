@@ -4,31 +4,70 @@
   <img src="logo_api.png" width="300"/>
 </p>
 
-API backend do projeto Agro Insight, focada em analytics e integracao com Google Earth Engine (GEE).
+API backend do projeto Agro Insight para extracao de dados geoespaciais (Google Earth Engine), contratos agrometeorologicos em `/agro` e endpoints de suporte de plataforma.
 
-## Contexto da API
+## Estado atual do projeto
 
-Esta API organiza os fluxos principais da plataforma em um unico servico FastAPI stateless:
+Arquitetura atual:
 
-- autenticacao e autorizacao de usuarios
-- endpoints de analytics
-- integracao com GEE para extracao e estatisticas Sentinel-2
-- endpoint de saude para monitoramento (`/health`)
-- sem dependencia de PostgreSQL no fluxo principal de runtime
+- API unica em FastAPI (`agro_gee_api/main.py`)
+- runtime stateless (sem PostgreSQL no fluxo principal)
+- integracao com Google Earth Engine para datasets e extracoes
+- dominio `/agro` com endpoints v1 para fenologia, agua e risco termico
+- healthcheck (`/health`) e servico de SPA (`/app` e `/assets/*`)
 
-Rotas principais por dominio:
+Dominios ativos:
 
-- `auth`: `/auth`
-- `analytics`: `/analytics`
-- `agro`: `/agro`
-- `gee`: `/gee`
-- `health`: `/health`
+- `/auth` (ping)
+- `/analytics` (ping)
+- `/gee` (catalogo e extracoes)
+- `/agro` (contratos agrometeorologicos)
+- `/health`
+- `/app` e `/assets/*`
 
-## Dominio `/agro` (v1)
+## Stack
 
-O dominio `/agro` expoe endpoints de suporte agrometeorologico com contratos estaveis para estimativa fenologica, demanda hidrica, balanco simplificado e risco termico.
+- Python 3.12+
+- FastAPI + Uvicorn
+- Earth Engine API
+- Pytest
+- Docker + Docker Compose
 
-Lista de endpoints `/agro` disponiveis na versao atual:
+Arquivos de referencia:
+
+- `agro_gee_api/main.py`
+- `agro_gee_api/routes/gee.py`
+- `agro_gee_api/routes/agro.py`
+- `docker-compose.yml`
+- `infrastructure/docker/api.Dockerfile`
+- `pyproject.toml`
+
+## Endpoints principais
+
+### Core
+
+- `GET /health`
+- `GET /auth/ping`
+- `GET /analytics/ping`
+
+### GEE
+
+- `GET /gee/ping`
+- `GET /gee/datasets`
+- `POST /gee/sentinel2/extract/point`
+- `POST /gee/sentinel2/extract/polygon`
+- `POST /gee/era5-land/extract/point`
+- `POST /gee/era5-land/extract/polygon`
+- `POST /gee/ifs-forecast/extract/point`
+- `POST /gee/ifs-forecast/extract/polygon`
+- `POST /gee/satellite-embedding-annual/extract/point`
+- `POST /gee/satellite-embedding-annual/extract/polygon`
+- `GET /gee/datasets/era5-land/variables`
+- `GET /gee/datasets/ifs-forecast/variables`
+- `GET /gee/datasets/satellite-embedding-annual/variables`
+- `POST /gee/auth/test` (habilitado por ambiente/flag e escopo)
+
+### Agro (v1)
 
 - `POST /agro/phenology/estimate/point`
 - `POST /agro/phenology/estimate/polygon`
@@ -41,98 +80,110 @@ Lista de endpoints `/agro` disponiveis na versao atual:
 - `POST /agro/thermal-risk/point`
 - `POST /agro/thermal-risk/polygon`
 
-## v1 limits and assumptions
+Assuncoes atuais da v1:
 
-- perfis agronomicos genericos `v1_default` para `soybean`, `corn` e `cotton`
-- ET0 calculada por Hargreaves-Samani
-- balanco hidrico com modelo de balde simples
-- `date_harvest` com papel apenas informativo
-- completude de poligono valida somente quando `valid_ratio >= 0.60`
-
-## Stack e arquitetura
-
-- Framework: FastAPI
-- Runtime: stateless (sem PostgreSQL no fluxo principal)
-- Containerizacao: Docker + Docker Compose
-- Testes: Pytest
-
-Arquivos de referencia:
-
-- App entrypoint: `agro_gee_api/main.py`
-- Compose local: `docker-compose.yml`
-- Dockerfile da API: `infrastructure/docker/api.Dockerfile`
+- perfis agronomicos `v1_default` para `soybean`, `corn`, `cotton`
+- ET0 por Hargreaves-Samani
+- balanco hidrico por bucket model simples
+- `date_harvest` validado, mas com papel informativo no calculo
 
 ## Como rodar localmente
 
-No diretorio raiz do projeto:
+No diretorio raiz:
 
 ```bash
 pip install -e .[dev]
 uvicorn agro_gee_api.main:app --reload
 ```
 
-## Como rodar com Docker
-
-No diretorio raiz do projeto:
-
-```bash
-docker compose up -d --build
-```
-
-Verifique os containers:
-
-```bash
-docker compose ps
-```
-
-Docs interativas:
+Documentacao interativa:
 
 - Swagger: `http://localhost:8000/docs`
 - OpenAPI: `http://localhost:8000/openapi.json`
 
-Observacao: o app inicia sem variaveis `POSTGRES_*`.
+## Como rodar com Docker
 
-## Rodando testes localmente
+No diretorio raiz:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Parar stack:
+
+```bash
+docker compose down
+```
+
+## Variaveis de ambiente (principais)
+
+- `APP_NAME`
+- `ENVIRONMENT` ou `APP_ENV`
+- `API_PORT` (padrao `8000`)
+- `GEE_AUTH_MODE`
+- `GEE_PROJECT_ID`
+- `GEE_SERVICE_ACCOUNT_EMAIL`
+- `GEE_PRIVATE_KEY`
+- `GEE_OAUTH_CLIENT_ID`
+- `GEE_OAUTH_CLIENT_SECRET`
+- `GEE_OAUTH_REFRESH_TOKEN`
+- `GEE_AUTH_TEST_ENABLED`
+
+Observacao: `POSTGRES_*` nao e obrigatorio no fluxo principal atual.
+
+## Como implementar e evoluir esta API
+
+Este projeto esta organizado para evolucao por dominio (`routes` + `services`). Um fluxo pratico para implementar novas features:
+
+1. Defina o contrato HTTP primeiro
+   - payload de entrada (Pydantic), resposta e codigos de erro.
+   - mantenha nomenclatura consistente com os dominios atuais.
+
+2. Implemente a regra de negocio em `services`
+   - extraia calculos/integracoes para `agro_gee_api/services/*`.
+   - deixe a rota fina: validacao, chamada de servico, mapeamento de erro.
+
+3. Exponha a rota em `routes`
+   - adicione endpoint no arquivo do dominio (`routes/agro.py`, `routes/gee.py` etc.).
+   - reaproveite o padrao de `DomainError` + `JSONResponse` ja usado no projeto.
+
+4. Registre no app principal
+   - inclua o router em `agro_gee_api/main.py` (se for dominio novo).
+   - ajuste tags OpenAPI para manter a documentacao organizada.
+
+5. Cubra com testes
+   - adicione testes de contrato e cenarios de erro em `tests/`.
+   - rode `pytest -v` antes de publicar.
+
+6. Entregue por ambiente
+   - valide local com `uvicorn`.
+   - valide container com `docker compose up -d --build`.
+   - use `/health` e `/docs` como checks rapidos de deploy.
+
+### Exemplo de extensao (novo endpoint `/agro`)
+
+- criar request/response em `agro_gee_api/routes/agro.py`
+- criar calculo em `agro_gee_api/services/agro_engine.py` (ou novo servico dedicado)
+- mapear erros para `error_code` estavel
+- adicionar testes para `200`, `400` e erros de dominio (`422/503/504` quando aplicavel)
+- validar contrato no `openapi.json`
+
+## Testes
 
 ```bash
 pip install -e .[dev]
 pytest -v
 ```
 
-## Validacoes realizadas
+## Notas de compatibilidade
 
-- `pytest tests/test_routes_registration.py tests/test_smoke.py -v`
-  - esperado: confirmar runtime sem dependencia de PostgreSQL e contratos de rotas ativas/removidas
-  - observado: 5 testes passaram (`5 passed`)
-- Healthcheck sem variaveis `POSTGRES_*`:
-  - comando: `python -c "import os; [os.environ.pop(k, None) for k in list(os.environ) if k.startswith('POSTGRES_')]; from fastapi.testclient import TestClient; from agro_gee_api.main import app; r=TestClient(app).get('/health'); print(f'status={r.status_code} body={r.json()}'); raise SystemExit(0 if r.status_code==200 else 1)"`
-  - esperado: aplicacao subir e responder `200` em `/health` sem `POSTGRES_*`
-  - observado: `status=200 body={'status': 'ok'}`
-- Rotas removidas (`/users`, `/farms`, `/fields`, `/whatsapp/ping`):
-  - esperado: retornar `404` e nao aparecer no `openapi.json`
-  - observado: validacao confirmada em `test_removed_core_domains_return_404` e `test_openapi_does_not_expose_removed_core_domains`
-- Task 11 - integracao `/agro`:
-  - comando: `pytest tests/test_agro_integration.py -v`
-  - esperado: todos os cenarios de integracao `/agro` e smokes nao-regressivos de `/gee` passarem
-  - observado: `12 passed`
-- Task 11 - regressao da suite completa:
-  - comando: `pytest -v`
-  - esperado: suite completa verde sem regressao causada pelo trabalho de `/agro`
-  - observado: `243 passed, 1 deselected`
-- Task 11 - contrato OpenAPI de `/agro`:
-  - comando: `python -c "from fastapi.testclient import TestClient; from agro_gee_api.main import app; paths=sorted([p for p in TestClient(app).get('/openapi.json').json()['paths'] if p.startswith('/agro/')]); print('agro_paths_count=' + str(len(paths))); print('agro_paths=' + ', '.join(paths))"`
-  - esperado: `openapi.json` expor exatamente 10 rotas `/agro` previstas para v1
-  - observado: `agro_paths_count=10` com todas as rotas v1 (`/agro/phenology/estimate/*`, `/agro/et0-etc/*`, `/agro/water-balance/simple/*`, `/agro/water-status/*`, `/agro/thermal-risk/*`)
-
-## Breaking change
-
-- Endpoints removidos: `/users`, `/farms`, `/fields`, `/whatsapp`.
-- Runtime padrao sem PostgreSQL: o fluxo principal da API nao depende mais de `psycopg` nem de `POSTGRES_*`.
-- Clientes que consumiam os endpoints removidos precisam migrar para os dominios ativos (`/auth`, `/analytics`, `/gee`, `/health`).
+- endpoints legados removidos: `/users`, `/farms`, `/fields`, `/whatsapp`
+- clientes devem usar os dominios atuais (`/auth`, `/analytics`, `/gee`, `/agro`, `/health`)
 
 ## Seguranca baseline
 
-Checklist inicial em `docs/security-baseline.md` com praticas minimas para:
+Checklist inicial em `docs/security-baseline.md` para:
 
 - gestao de segredos
 - atualizacao de dependencias
