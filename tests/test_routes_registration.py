@@ -54,6 +54,13 @@ def test_gee_openapi_operations_have_expected_single_tags() -> None:
     client = TestClient(app)
     operations = _openapi_operations(client)
 
+    assert operations[("/gee/sentinel1/extract/point", "POST")].get("tags") == [
+        "sentinel1"
+    ]
+    assert operations[("/gee/sentinel1/extract/polygon", "POST")].get("tags") == [
+        "sentinel1"
+    ]
+
     expected_tags_by_operation = {
         ("/gee/ping", "GET"): "gee-core",
         ("/gee/auth/test", "POST"): "gee-core",
@@ -91,6 +98,7 @@ def test_all_gee_operations_use_single_allowed_non_generic_tag() -> None:
 
     allowed_gee_tags = {
         "gee-core",
+        "sentinel1",
         "sentinel2",
         "era5-land",
         "ifs-forecast",
@@ -119,6 +127,7 @@ def test_openapi_global_tag_metadata_order_and_descriptions() -> None:
         "auth",
         "analytics",
         "gee-core",
+        "sentinel1",
         "sentinel2",
         "era5-land",
         "ifs-forecast",

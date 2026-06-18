@@ -22,6 +22,10 @@ OPENAPI_TAGS = [
         "description": "Core Google Earth Engine health, auth, and dataset catalog endpoints.",
     },
     {
+        "name": "sentinel1",
+        "description": "Sentinel-1 timeseries, image, and stats extraction endpoints for point and polygon geometries.",
+    },
+    {
         "name": "sentinel2",
         "description": "Sentinel-2 extraction endpoints for point and polygon geometries.",
     },

@@ -82,6 +82,24 @@ class GEEClient(Protocol):
         metric: str,
     ) -> float: ...
 
+    def extract_point_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float: ...
+
+    def extract_polygon_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float: ...
+
     def timeseries(
         self,
         *,
@@ -89,6 +107,15 @@ class GEEClient(Protocol):
         date_start: str,
         date_end: str,
         cloud_pct_max: int,
+        metric: str,
+    ) -> list[dict[str, object]]: ...
+
+    def timeseries_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
         metric: str,
     ) -> list[dict[str, object]]: ...
 
@@ -136,6 +163,7 @@ class GEERuntimeProtocol(Protocol):
 
 class EarthEngineClient:
     _DATASET = "COPERNICUS/S2_SR_HARMONIZED"
+    _SENTINEL1_DATASET = "COPERNICUS/S1_GRD"
     _DATASET_EXTRACT_DEFAULT_SCALE = 10_000
 
     def __init__(
@@ -215,6 +243,54 @@ class EarthEngineClient:
             date_start=date_start,
             date_end=date_end,
             cloud_pct_max=cloud_pct_max,
+            metric=metric,
+        )
+
+    def extract_point_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "vv_mean",
+    ) -> float:
+        return self._execute(
+            self._operation_extract_point_sentinel1,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def extract_polygon_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "vv_mean",
+    ) -> float:
+        return self._execute(
+            self._operation_extract_polygon_sentinel1,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def timeseries_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "vv_mean",
+    ) -> list[dict[str, object]]:
+        return self._execute(
+            self._operation_timeseries_sentinel1,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
             metric=metric,
         )
 
@@ -370,6 +446,36 @@ class EarthEngineClient:
             metric=metric,
         )
 
+    def _operation_extract_point_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        return self._extract_reduced_value_sentinel1(
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def _operation_extract_polygon_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        return self._extract_reduced_value_sentinel1(
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
     def _operation_timeseries(
         self,
         *,
@@ -426,6 +532,80 @@ class EarthEngineClient:
                     cloud_pct = None
             result.append(
                 {"date": str(date_value), "value": value, "cloud_pct": cloud_pct}
+            )
+        return result
+
+    def _operation_timeseries_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> list[dict[str, object]]:
+        geometry = self._ee.Geometry(geometry_geojson)
+        collection = self._filtered_collection_sentinel1(
+            geometry=geometry,
+            date_start=date_start,
+            date_end=date_end,
+        )
+        timeseries_collection = collection.map(
+            lambda image: self._to_timeseries_feature_sentinel1(
+                image=image,
+                geometry=geometry,
+                metric=metric,
+            )
+        )
+        info = timeseries_collection.getInfo()
+        features = info.get("features", []) if isinstance(info, dict) else []
+        if not isinstance(features, list):
+            features = []
+
+        result: list[dict[str, object]] = []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            properties = feature.get("properties", {})
+            if not isinstance(properties, dict):
+                continue
+            date_value = properties.get("date") or properties.get("system:time_start")
+            metric_value = properties.get("value")
+            if not isinstance(date_value, str) or not date_value:
+                continue
+
+            value: float | None = None
+            if metric == "vv_vh_ratio":
+                vv_db = properties.get("vv_db")
+                vh_db = properties.get("vh_db")
+                if vv_db is None:
+                    continue
+                if vh_db is None:
+                    continue
+                try:
+                    vv_db_float = float(vv_db)
+                    vh_db_float = float(vh_db)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(vv_db_float) or not math.isfinite(vh_db_float):
+                    continue
+                value = 10 ** ((vv_db_float - vh_db_float) / 10.0)
+            else:
+                if metric_value is None:
+                    continue
+                try:
+                    value = float(metric_value)
+                except (TypeError, ValueError):
+                    continue
+            if value is None or not math.isfinite(value):
+                continue
+
+            result.append({"date": str(date_value), "value": value, "cloud_pct": None})
+
+        if not result:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid imagery for requested period",
+                retryable=False,
             )
         return result
 
@@ -689,6 +869,34 @@ class EarthEngineClient:
             )
         return value
 
+    def _extract_reduced_value_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        geometry = self._ee.Geometry(geometry_geojson)
+        collection = self._filtered_collection_sentinel1(
+            geometry=geometry,
+            date_start=date_start,
+            date_end=date_end,
+        )
+        mean_image = collection.mean()
+        value = self._reduce_sentinel1_metric(
+            image=mean_image,
+            geometry=geometry,
+            metric=metric,
+        )
+        if value is None:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid imagery for requested period",
+                retryable=False,
+            )
+        return value
+
     def _filtered_collection(
         self,
         *,
@@ -702,6 +910,36 @@ class EarthEngineClient:
             .filterBounds(geometry)
             .filterDate(date_start, date_end)
             .filter(self._ee.Filter.lte("CLOUDY_PIXEL_PERCENTAGE", cloud_pct_max))
+        )
+
+    def _filtered_collection_sentinel1(
+        self,
+        *,
+        geometry: object,
+        date_start: str,
+        date_end: str,
+    ) -> object:
+        start_at, end_before = self._to_utc_filter_window(
+            date_start=date_start,
+            date_end=date_end,
+        )
+        return (
+            self._ee.ImageCollection(self._SENTINEL1_DATASET)
+            .filterBounds(geometry)
+            .filterDate(start_at, end_before)
+            .filter(self._ee.Filter.eq("instrumentMode", "IW"))
+            .filter(
+                self._ee.Filter.listContains(
+                    "transmitterReceiverPolarisation",
+                    "VV",
+                )
+            )
+            .filter(
+                self._ee.Filter.listContains(
+                    "transmitterReceiverPolarisation",
+                    "VH",
+                )
+            )
         )
 
     def _ndvi_collection(
@@ -729,6 +967,76 @@ class EarthEngineClient:
                 )
             )
         )
+
+    def _reduce_sentinel1_metric(
+        self,
+        *,
+        image: object,
+        geometry: object,
+        metric: str,
+    ) -> float | None:
+        if metric == "vv_mean":
+            return self._reduce_sentinel1_band(
+                image=image,
+                geometry=geometry,
+                band_name="VV",
+            )
+        if metric == "vh_mean":
+            return self._reduce_sentinel1_band(
+                image=image,
+                geometry=geometry,
+                band_name="VH",
+            )
+        if metric == "vv_vh_ratio":
+            vv = self._reduce_sentinel1_band(
+                image=image,
+                geometry=geometry,
+                band_name="VV",
+            )
+            vh = self._reduce_sentinel1_band(
+                image=image,
+                geometry=geometry,
+                band_name="VH",
+            )
+            if vv is None or vh is None:
+                return None
+            ratio = 10 ** ((vv - vh) / 10.0)
+            if not math.isfinite(ratio):
+                return None
+            return ratio
+        raise ValueError("Unsupported metric")
+
+    def _reduce_sentinel1_band(
+        self,
+        *,
+        image: object,
+        geometry: object,
+        band_name: str,
+    ) -> float | None:
+        stats = (
+            image.select(band_name)
+            .reduceRegion(
+                reducer=self._ee.Reducer.mean(),
+                geometry=geometry,
+                scale=10,
+                maxPixels=1_000_000_000,
+            )
+            .getInfo()
+        )
+        if not isinstance(stats, dict):
+            return None
+        raw = stats.get(band_name)
+        if raw is None:
+            raw = stats.get("INDEX")
+        if raw is None:
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        return value
 
     def _extract_index_value(self, stats: object) -> float | None:
         if not isinstance(stats, dict):
@@ -765,6 +1073,107 @@ class EarthEngineClient:
                 },
             )
         raise ValueError("Unsupported metric")
+
+    def _sentinel1_index_image(self, *, image: object, metric: str) -> object:
+        if metric == "vv_mean":
+            return image.select("VV")
+        if metric == "vh_mean":
+            return image.select("VH")
+        if metric == "vv_vh_ratio":
+            return image.expression(
+                "pow(10, VV / 10) / pow(10, VH / 10)",
+                {
+                    "VV": image.select("VV"),
+                    "VH": image.select("VH"),
+                },
+            )
+        raise ValueError("Unsupported metric")
+
+    def _to_timeseries_feature_sentinel1(
+        self, *, image: object, geometry: object, metric: str
+    ) -> object:
+        metric_value: object = None
+        vv_value: object = None
+        vh_value: object = None
+
+        if metric == "vv_mean":
+            stats = (
+                image.select("VV").reduceRegion(
+                    reducer=self._ee.Reducer.mean(),
+                    geometry=geometry,
+                    scale=10,
+                    maxPixels=1_000_000_000,
+                )
+                if hasattr(image, "select") and hasattr(image, "reduceRegion")
+                else {}
+            )
+            if hasattr(stats, "get"):
+                metric_value = stats.get("VV")
+            elif isinstance(stats, dict):
+                metric_value = stats.get("VV")
+        elif metric == "vh_mean":
+            stats = (
+                image.select("VH").reduceRegion(
+                    reducer=self._ee.Reducer.mean(),
+                    geometry=geometry,
+                    scale=10,
+                    maxPixels=1_000_000_000,
+                )
+                if hasattr(image, "select") and hasattr(image, "reduceRegion")
+                else {}
+            )
+            if hasattr(stats, "get"):
+                metric_value = stats.get("VH")
+            elif isinstance(stats, dict):
+                metric_value = stats.get("VH")
+        elif metric == "vv_vh_ratio":
+            vv_stats = (
+                image.select("VV").reduceRegion(
+                    reducer=self._ee.Reducer.mean(),
+                    geometry=geometry,
+                    scale=10,
+                    maxPixels=1_000_000_000,
+                )
+                if hasattr(image, "select") and hasattr(image, "reduceRegion")
+                else {}
+            )
+            vh_stats = (
+                image.select("VH").reduceRegion(
+                    reducer=self._ee.Reducer.mean(),
+                    geometry=geometry,
+                    scale=10,
+                    maxPixels=1_000_000_000,
+                )
+                if hasattr(image, "select") and hasattr(image, "reduceRegion")
+                else {}
+            )
+            if hasattr(vv_stats, "get"):
+                vv_value = vv_stats.get("VV")
+            elif isinstance(vv_stats, dict):
+                vv_value = vv_stats.get("VV")
+            if hasattr(vh_stats, "get"):
+                vh_value = vh_stats.get("VH")
+            elif isinstance(vh_stats, dict):
+                vh_value = vh_stats.get("VH")
+        else:
+            raise ValueError("Unsupported metric")
+
+        date_value: object = None
+        if hasattr(image, "date"):
+            date_obj = image.date()
+            if hasattr(date_obj, "format"):
+                date_value = date_obj.format("YYYY-MM-dd")
+
+        properties = {
+            "date": date_value,
+            "value": metric_value,
+            "cloud_pct": None,
+            "vv_db": vv_value,
+            "vh_db": vh_value,
+        }
+        if hasattr(self._ee, "Feature"):
+            return self._ee.Feature(None, properties)
+        return {"type": "Feature", "properties": properties}
 
     def _cloud_percentage_for_geometry(
         self, *, image: object, geometry: object

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 import os
+from collections.abc import Callable
 from typing import Any, cast
 from uuid import uuid4
 
@@ -32,6 +33,12 @@ from agro_gee_api.services.gee_meteo_extract import (
     ValidationError as MeteoValidationError,
 )
 from agro_gee_api.services.gee_runtime import GEERuntime
+from agro_gee_api.services.gee_sentinel1_extract import (
+    GEEAuthFailedError as Sentinel1GEEAuthFailedError,
+    GEETimeoutError as Sentinel1GEETimeoutError,
+    Sentinel1ExtractService,
+    ValidationError as Sentinel1ValidationError,
+)
 from agro_gee_api.services.gee_sentinel2_extract import (
     GEEAuthFailedError as ExtractGEEAuthFailedError,
     GEETimeoutError as ExtractGEETimeoutError,
@@ -90,6 +97,27 @@ class Sentinel2ExtractValueResponse(BaseModel):
     series: list[dict[str, object]]
 
 
+class Sentinel1ExtractPointRequest(BaseModel):
+    coordinates: list[float]
+    date_start: date
+    date_end: date
+    metric: str
+
+
+class Sentinel1ExtractPolygonRequest(BaseModel):
+    geometry: dict[str, object]
+    date_start: date
+    date_end: date
+    metric: str
+
+
+class Sentinel1ExtractValueResponse(BaseModel):
+    dataset: str
+    metric: str
+    value: float
+    series: list[dict[str, object]]
+
+
 class GEEAuthTestResponse(BaseModel):
     status: str
 
@@ -133,6 +161,10 @@ def get_catalog_service() -> GEECatalogService:
 
 def get_extract_service() -> Sentinel2ExtractService:
     return Sentinel2ExtractService(gee_client=get_gee_client())
+
+
+def get_sentinel1_extract_service() -> Sentinel1ExtractService:
+    return Sentinel1ExtractService(gee_client=cast(Any, get_gee_client()))
 
 
 def get_gee_client() -> EarthEngineClient:
@@ -232,7 +264,9 @@ def _validate_lon_lat(lon: object, lat: object) -> tuple[float, float]:
     return lon_value, lat_value
 
 
-def _validate_point_coordinates(coordinates: list[object]) -> dict[str, object]:
+def _validate_point_coordinates(
+    coordinates: list[object] | list[float],
+) -> dict[str, object]:
     if len(coordinates) != 2:
         raise DomainError("INVALID_REQUEST", "Malformed geometry")
     lon, lat = _validate_lon_lat(coordinates[0], coordinates[1])
@@ -304,7 +338,8 @@ def _meteo_extract_point(
         variable=extract_result["variable"],
         value=extract_result["value"],
         series=[
-            MeteoExtractSeriesItemResponse(**item) for item in extract_result["series"]
+            MeteoExtractSeriesItemResponse(date=item["date"], value=item["value"])
+            for item in extract_result["series"]
         ],
     )
 
@@ -331,8 +366,118 @@ def _meteo_extract_polygon(
         variable=extract_result["variable"],
         value=extract_result["value"],
         series=[
-            MeteoExtractSeriesItemResponse(**item) for item in extract_result["series"]
+            MeteoExtractSeriesItemResponse(date=item["date"], value=item["value"])
+            for item in extract_result["series"]
         ],
+    )
+
+
+def _sentinel1_series_average_or_none(series: list[dict[str, object]]) -> float | None:
+    values = [
+        float(cast(float, item.get("value")))
+        for item in series
+        if isinstance(item, dict)
+        and isinstance(item.get("value"), (int, float))
+        and not isinstance(item.get("value"), bool)
+    ]
+    if not values:
+        return None
+    return round(sum(values) / len(values), 10)
+
+
+def _map_sentinel1_error(exc: Exception) -> DomainError:
+    if isinstance(exc, Sentinel1ValidationError):
+        return DomainError(exc.error_code, exc.message, retryable=exc.retryable)
+    if isinstance(exc, Sentinel1GEETimeoutError):
+        return DomainError("GEE_TIMEOUT", exc.message, retryable=exc.retryable)
+    if isinstance(exc, Sentinel1GEEAuthFailedError):
+        return DomainError("GEE_AUTH_FAILED", exc.message, retryable=exc.retryable)
+    if isinstance(exc, GEEAuthError):
+        return DomainError("GEE_AUTH_FAILED", exc.message, retryable=False)
+    if isinstance(exc, GEEUnavailableError):
+        return DomainError(exc.error_code, exc.message, retryable=exc.retryable)
+    return DomainError("GEE_INTERNAL_ERROR", "Earth Engine operation failed")
+
+
+def _build_sentinel1_response(
+    *, metric: str, extracted_value: float, series: list[dict[str, object]]
+) -> Sentinel1ExtractValueResponse:
+    average = _sentinel1_series_average_or_none(series)
+    value = average if average is not None else extracted_value
+    return Sentinel1ExtractValueResponse(
+        dataset="COPERNICUS/S1_GRD",
+        metric=metric,
+        value=value,
+        series=series,
+    )
+
+
+def _sentinel1_extract(
+    *,
+    geometry_geojson: dict[str, object],
+    date_start: date,
+    date_end: date,
+    metric: str,
+    extract_fn: Callable[..., float],
+) -> Sentinel1ExtractValueResponse | JSONResponse:
+    try:
+        service = get_sentinel1_extract_service()
+        extracted_value = extract_fn(
+            service,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+        series = list(
+            service.timeseries(
+                geometry_geojson=geometry_geojson,
+                date_start=date_start,
+                date_end=date_end,
+                metric=metric,
+            )
+        )
+    except DomainError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(_map_sentinel1_error(exc))
+
+    return _build_sentinel1_response(
+        metric=metric,
+        extracted_value=extracted_value,
+        series=series,
+    )
+
+
+def _sentinel1_extract_point(
+    payload: Sentinel1ExtractPointRequest,
+) -> Sentinel1ExtractValueResponse | JSONResponse:
+    try:
+        geometry_geojson = _validate_point_coordinates(payload.coordinates)
+    except DomainError as exc:
+        return _error_response(exc)
+    return _sentinel1_extract(
+        geometry_geojson=geometry_geojson,
+        date_start=payload.date_start,
+        date_end=payload.date_end,
+        metric=payload.metric,
+        extract_fn=lambda service, **kwargs: service.extract_point(**kwargs),
+    )
+
+
+def _sentinel1_extract_polygon(
+    payload: Sentinel1ExtractPolygonRequest,
+) -> Sentinel1ExtractValueResponse | JSONResponse:
+    try:
+        geometry_geojson = _validate_polygon_geometry(payload.geometry)
+    except DomainError as exc:
+        return _error_response(exc)
+    return _sentinel1_extract(
+        geometry_geojson=geometry_geojson,
+        date_start=payload.date_start,
+        date_end=payload.date_end,
+        metric=payload.metric,
+        extract_fn=lambda service, **kwargs: service.extract_polygon(**kwargs),
     )
 
 
@@ -437,6 +582,28 @@ def post_satellite_embedding_annual_extract_polygon(
     return _meteo_extract_polygon(
         dataset_key="satellite-embedding-annual", payload=payload
     )
+
+
+@router.post(
+    "/sentinel1/extract/point",
+    response_model=Sentinel1ExtractValueResponse,
+    tags=["sentinel1"],
+)
+def post_sentinel1_extract_point(
+    payload: Sentinel1ExtractPointRequest,
+) -> Sentinel1ExtractValueResponse | JSONResponse:
+    return _sentinel1_extract_point(payload)
+
+
+@router.post(
+    "/sentinel1/extract/polygon",
+    response_model=Sentinel1ExtractValueResponse,
+    tags=["sentinel1"],
+)
+def post_sentinel1_extract_polygon(
+    payload: Sentinel1ExtractPolygonRequest,
+) -> Sentinel1ExtractValueResponse | JSONResponse:
+    return _sentinel1_extract_polygon(payload)
 
 
 @router.get(

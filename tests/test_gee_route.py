@@ -10,6 +10,11 @@ from agro_gee_api.services.gee_client import GEEAuthError
 from agro_gee_api.services.gee_sentinel2_extract import (
     ValidationError as ExtractValidationError,
 )
+from agro_gee_api.services.gee_sentinel1_extract import (
+    GEEAuthFailedError as Sentinel1GEEAuthFailedError,
+    GEETimeoutError as Sentinel1GEETimeoutError,
+    ValidationError as Sentinel1ValidationError,
+)
 from agro_gee_api.services.gee_meteo_extract import (
     GEETimeoutError as MeteoGEETimeoutError,
     ValidationError as MeteoValidationError,
@@ -270,6 +275,669 @@ def test_post_extract_point_includes_daily_series_with_cloud_pct(monkeypatch) ->
         {"date": "2026-06-01", "value": 0.3, "cloud_pct": 10.0},
         {"date": "2026-06-02", "value": 0.5, "cloud_pct": 20.0},
     ]
+
+
+SENTINEL1_VALID_POINT_PAYLOAD = {
+    "coordinates": [-47.0, -15.0],
+    "date_start": "2026-06-01",
+    "date_end": "2026-06-10",
+    "metric": "vv_mean",
+}
+
+SENTINEL1_VALID_POLYGON_PAYLOAD = {
+    "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+            [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+        ],
+    },
+    "date_start": "2026-06-01",
+    "date_end": "2026-06-10",
+    "metric": "vv_mean",
+}
+
+
+def test_post_sentinel1_extract_point_returns_extract_contract(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **kwargs: object) -> float:
+            assert kwargs["geometry_geojson"] == {
+                "type": "Point",
+                "coordinates": [-47.0, -15.0],
+            }
+            assert kwargs["date_start"] == date(2026, 6, 1)
+            assert kwargs["date_end"] == date(2026, 6, 10)
+            assert kwargs["metric"] == "vv_mean"
+            return 0.44
+
+        def timeseries(self, **kwargs: object) -> list[dict[str, object]]:
+            assert kwargs["geometry_geojson"] == {
+                "type": "Point",
+                "coordinates": [-47.0, -15.0],
+            }
+            assert kwargs["date_start"] == date(2026, 6, 1)
+            assert kwargs["date_end"] == date(2026, 6, 10)
+            assert kwargs["metric"] == "vv_mean"
+            return [
+                {"date": "2026-06-01", "value": 0.33, "cloud_pct": None},
+                {"date": "2026-06-02", "value": 0.55, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dataset": "COPERNICUS/S1_GRD",
+        "metric": "vv_mean",
+        "value": 0.44,
+        "series": [
+            {"date": "2026-06-01", "value": 0.33, "cloud_pct": None},
+            {"date": "2026-06-02", "value": 0.55, "cloud_pct": None},
+        ],
+    }
+
+
+def test_post_sentinel1_extract_polygon_returns_extract_contract(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **kwargs: object) -> float:
+            assert kwargs["geometry_geojson"] == {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            }
+            assert kwargs["date_start"] == date(2026, 6, 1)
+            assert kwargs["date_end"] == date(2026, 6, 10)
+            assert kwargs["metric"] == "vv_mean"
+            return 0.62
+
+        def timeseries(self, **kwargs: object) -> list[dict[str, object]]:
+            assert kwargs["geometry_geojson"] == {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+                ],
+            }
+            assert kwargs["date_start"] == date(2026, 6, 1)
+            assert kwargs["date_end"] == date(2026, 6, 10)
+            assert kwargs["metric"] == "vv_mean"
+            return [
+                {"date": "2026-06-01", "value": 0.61, "cloud_pct": None},
+                {"date": "2026-06-02", "value": 0.63, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dataset": "COPERNICUS/S1_GRD",
+        "metric": "vv_mean",
+        "value": 0.62,
+        "series": [
+            {"date": "2026-06-01", "value": 0.61, "cloud_pct": None},
+            {"date": "2026-06-02", "value": 0.63, "cloud_pct": None},
+        ],
+    }
+
+
+def test_post_sentinel1_extract_point_maps_unsupported_metric_to_invalid_request(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise Sentinel1ValidationError("INVALID_REQUEST", "Unsupported metric")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point",
+        json={**SENTINEL1_VALID_POINT_PAYLOAD, "metric": "foo_mean"},
+    )
+    body = response.json()
+
+    assert response.status_code == 400
+    assert body["error_code"] == "INVALID_REQUEST"
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_maps_validation_error_code_directly(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise Sentinel1ValidationError(
+                "AREA_LIMIT_EXCEEDED", "Area exceeds supported limit"
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 413
+    assert body["error_code"] == "AREA_LIMIT_EXCEEDED"
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_no_imagery_unavailable_to_422(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise GEEUnavailableError(
+                "NO_IMAGERY", "No imagery for date range", retryable=False
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 422
+    assert body["error_code"] == "NO_IMAGERY"
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_unsupported_metric_to_invalid_request(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise Sentinel1ValidationError("INVALID_REQUEST", "Unsupported metric")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon",
+        json={**SENTINEL1_VALID_POLYGON_PAYLOAD, "metric": "foo_mean"},
+    )
+    body = response.json()
+
+    assert response.status_code == 400
+    assert body["error_code"] == "INVALID_REQUEST"
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_maps_no_imagery_unavailable_to_422(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise GEEUnavailableError(
+                "NO_IMAGERY", "No imagery for date range", retryable=False
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 422
+    assert body["error_code"] == "NO_IMAGERY"
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_rejects_invalid_coordinate_bounds(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        extract_called = False
+        timeseries_called = False
+
+        def extract_point(self, **_: object) -> float:
+            self.extract_called = True
+            return 0.0
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            self.timeseries_called = True
+            return []
+
+    service = Sentinel1Service()
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: service,
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point",
+        json={**SENTINEL1_VALID_POINT_PAYLOAD, "coordinates": [-181.0, -15.0]},
+    )
+    body = response.json()
+
+    assert response.status_code == 400
+    assert body["error_code"] == "INVALID_REQUEST"
+    assert "correlation_id" in body
+    assert service.extract_called is False
+    assert service.timeseries_called is False
+
+
+def test_post_sentinel1_extract_polygon_rejects_unclosed_ring(monkeypatch) -> None:
+    class Sentinel1Service:
+        extract_called = False
+        timeseries_called = False
+
+        def extract_polygon(self, **_: object) -> float:
+            self.extract_called = True
+            return 0.0
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            self.timeseries_called = True
+            return []
+
+    service = Sentinel1Service()
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: service,
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon",
+        json={
+            **SENTINEL1_VALID_POLYGON_PAYLOAD,
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.1, -15.1]]
+                ],
+            },
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 400
+    assert body["error_code"] == "INVALID_REQUEST"
+    assert "correlation_id" in body
+    assert service.extract_called is False
+    assert service.timeseries_called is False
+
+
+def test_post_sentinel1_extract_point_maps_unavailable_to_503(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise GEEUnavailableError("GEE_UNAVAILABLE", "offline", retryable=True)
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["error_code"] == "GEE_UNAVAILABLE"
+    assert body["message"] == "offline"
+    assert body["retryable"] is True
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_unavailable_to_503(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise GEEUnavailableError(
+                "GEE_UNAVAILABLE", "offline polygon", retryable=True
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["error_code"] == "GEE_UNAVAILABLE"
+    assert body["message"] == "offline polygon"
+    assert body["retryable"] is True
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_maps_timeout_to_504(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise Sentinel1GEETimeoutError(
+                "GEE_TIMEOUT", "timeout point", retryable=True
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 504
+    assert body["error_code"] == "GEE_TIMEOUT"
+    assert body["message"] == "timeout point"
+    assert body["retryable"] is True
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_timeout_to_504(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise Sentinel1GEETimeoutError("GEE_TIMEOUT", "timeout", retryable=True)
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 504
+    assert body["error_code"] == "GEE_TIMEOUT"
+    assert body["message"] == "timeout"
+    assert body["retryable"] is True
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_maps_auth_failed_to_500(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            raise Sentinel1GEEAuthFailedError("GEE_AUTH_FAILED", "auth failed")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+    assert body["message"] == "auth failed"
+    assert body["retryable"] is False
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_auth_failed_to_500(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise Sentinel1GEEAuthFailedError("GEE_AUTH_FAILED", "auth failed polygon")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+    assert body["message"] == "auth failed polygon"
+    assert body["retryable"] is False
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_raw_auth_error_to_500(monkeypatch) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise GEEAuthError("GEE_AUTH_FAILED", "raw auth failed polygon")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+    assert body["message"] == "raw auth failed polygon"
+    assert body["retryable"] is False
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_polygon_maps_raw_auth_error_from_timeseries_to_500(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            return 0.62
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            raise GEEAuthError("GEE_AUTH_FAILED", "raw auth failed timeseries")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+    assert body["message"] == "raw auth failed timeseries"
+    assert body["retryable"] is False
+    assert "correlation_id" in body
+
+
+def test_post_sentinel1_extract_point_recomputes_value_from_numeric_series(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.91
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return [
+                {"date": "2026-06-01", "value": 0.40, "cloud_pct": None},
+                {"date": "2026-06-02", "value": "ignored", "cloud_pct": None},
+                {"date": "2026-06-03", "value": 0.80, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.6
+
+
+def test_post_sentinel1_extract_polygon_recomputes_value_from_numeric_series(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            return 0.95
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return [
+                {"date": "2026-06-01", "value": 0.40, "cloud_pct": None},
+                {"date": "2026-06-02", "value": "ignored", "cloud_pct": None},
+                {"date": "2026-06-03", "value": 0.80, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.6
+
+
+def test_post_sentinel1_extract_point_keeps_extracted_value_when_series_empty(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.72
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return []
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.72
+
+
+def test_post_sentinel1_extract_polygon_keeps_extracted_value_when_series_empty(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_polygon(self, **_: object) -> float:
+            return 0.67
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return []
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/polygon", json={**SENTINEL1_VALID_POLYGON_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.67
+
+
+def test_post_sentinel1_extract_point_keeps_extracted_value_when_series_non_numeric(
+    monkeypatch,
+) -> None:
+    class Sentinel1Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.81
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return [
+                {"date": "2026-06-01", "value": "n/a", "cloud_pct": None},
+                {"date": "2026-06-02", "value": None, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_sentinel1_extract_service",
+        lambda: Sentinel1Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/sentinel1/extract/point", json={**SENTINEL1_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.81
 
 
 def test_removed_endpoints_return_404() -> None:
