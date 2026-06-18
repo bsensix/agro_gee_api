@@ -339,8 +339,8 @@ def test_post_sentinel1_extract_point_returns_extract_contract(monkeypatch) -> N
         "metric": "vv_mean",
         "value": 0.44,
         "series": [
-            {"date": "2026-06-01", "value": 0.33, "cloud_pct": None},
-            {"date": "2026-06-02", "value": 0.55, "cloud_pct": None},
+            {"date": "2026-06-01", "value": 0.33},
+            {"date": "2026-06-02", "value": 0.55},
         ],
     }
 
@@ -391,8 +391,8 @@ def test_post_sentinel1_extract_polygon_returns_extract_contract(monkeypatch) ->
         "metric": "vv_mean",
         "value": 0.62,
         "series": [
-            {"date": "2026-06-01", "value": 0.61, "cloud_pct": None},
-            {"date": "2026-06-02", "value": 0.63, "cloud_pct": None},
+            {"date": "2026-06-01", "value": 0.61},
+            {"date": "2026-06-02", "value": 0.63},
         ],
     }
 

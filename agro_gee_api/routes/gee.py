@@ -385,6 +385,12 @@ def _sentinel1_series_average_or_none(series: list[dict[str, object]]) -> float 
     return round(sum(values) / len(values), 10)
 
 
+def _strip_cloud_pct_from_series(
+    series: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    return [{k: v for k, v in item.items() if k != "cloud_pct"} for item in series]
+
+
 def _map_sentinel1_error(exc: Exception) -> DomainError:
     if isinstance(exc, Sentinel1ValidationError):
         return DomainError(exc.error_code, exc.message, retryable=exc.retryable)
@@ -402,13 +408,14 @@ def _map_sentinel1_error(exc: Exception) -> DomainError:
 def _build_sentinel1_response(
     *, metric: str, extracted_value: float, series: list[dict[str, object]]
 ) -> Sentinel1ExtractValueResponse:
-    average = _sentinel1_series_average_or_none(series)
+    normalized_series = _strip_cloud_pct_from_series(series)
+    average = _sentinel1_series_average_or_none(normalized_series)
     value = average if average is not None else extracted_value
     return Sentinel1ExtractValueResponse(
         dataset="COPERNICUS/S1_GRD",
         metric=metric,
         value=value,
-        series=series,
+        series=normalized_series,
     )
 
 
