@@ -39,6 +39,12 @@ from agro_gee_api.services.gee_sentinel1_extract import (
     Sentinel1ExtractService,
     ValidationError as Sentinel1ValidationError,
 )
+from agro_gee_api.services.gee_landsat9_extract import (
+    GEEAuthFailedError as Landsat9GEEAuthFailedError,
+    GEETimeoutError as Landsat9GEETimeoutError,
+    Landsat9ExtractService,
+    ValidationError as Landsat9ValidationError,
+)
 from agro_gee_api.services.gee_sentinel2_extract import (
     GEEAuthFailedError as ExtractGEEAuthFailedError,
     GEETimeoutError as ExtractGEETimeoutError,
@@ -91,6 +97,27 @@ class Sentinel2ExtractPolygonRequest(BaseModel):
 
 
 class Sentinel2ExtractValueResponse(BaseModel):
+    dataset: str
+    metric: str
+    value: float
+    series: list[dict[str, object]]
+
+
+class Landsat9ExtractPointRequest(BaseModel):
+    coordinates: list[float]
+    date_start: date
+    date_end: date
+    metric: str
+
+
+class Landsat9ExtractPolygonRequest(BaseModel):
+    geometry: dict[str, object]
+    date_start: date
+    date_end: date
+    metric: str
+
+
+class Landsat9ExtractValueResponse(BaseModel):
     dataset: str
     metric: str
     value: float
@@ -165,6 +192,10 @@ def get_extract_service() -> Sentinel2ExtractService:
 
 def get_sentinel1_extract_service() -> Sentinel1ExtractService:
     return Sentinel1ExtractService(gee_client=cast(Any, get_gee_client()))
+
+
+def get_landsat9_extract_service() -> Landsat9ExtractService:
+    return Landsat9ExtractService(gee_client=get_gee_client())
 
 
 def get_gee_client() -> EarthEngineClient:
@@ -779,6 +810,120 @@ def post_sentinel2_extract_polygon(
 
     return Sentinel2ExtractValueResponse(
         dataset="COPERNICUS/S2_SR_HARMONIZED",
+        metric=payload.metric,
+        value=value,
+        series=series,
+    )
+
+
+@router.post(
+    "/landsat9/extract/point",
+    response_model=Landsat9ExtractValueResponse,
+    tags=["landsat9"],
+)
+def post_landsat9_extract_point(
+    payload: Landsat9ExtractPointRequest,
+) -> Landsat9ExtractValueResponse | JSONResponse:
+    try:
+        service = get_landsat9_extract_service()
+        geometry_geojson = {
+            "type": "Point",
+            "coordinates": payload.coordinates,
+        }
+        value = service.extract_point(
+            geometry_geojson=geometry_geojson,
+            date_start=payload.date_start,
+            date_end=payload.date_end,
+            metric=payload.metric,
+        )
+        series: list[dict[str, object]] = []
+        if hasattr(service, "timeseries"):
+            timeseries_fn = cast(Any, service).timeseries
+            series = list(
+                timeseries_fn(
+                    geometry_geojson=geometry_geojson,
+                    date_start=payload.date_start,
+                    date_end=payload.date_end,
+                    metric=payload.metric,
+                )
+            )
+        if series:
+            values = [
+                float(cast(float, item.get("value")))
+                for item in series
+                if isinstance(item, dict)
+                and isinstance(item.get("value"), (int, float))
+            ]
+            if values:
+                value = sum(values) / len(values)
+    except Landsat9ValidationError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+    except GEEAuthError as exc:
+        return _error_response(
+            DomainError("GEE_AUTH_FAILED", exc.message, retryable=False)
+        )
+    except GEEUnavailableError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+    except Landsat9GEETimeoutError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+    except Landsat9GEEAuthFailedError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+
+    return Landsat9ExtractValueResponse(
+        dataset="LANDSAT/LC09/C02/T1_L2",
+        metric=payload.metric,
+        value=value,
+        series=series,
+    )
+
+
+@router.post(
+    "/landsat9/extract/polygon",
+    response_model=Landsat9ExtractValueResponse,
+    tags=["landsat9"],
+)
+def post_landsat9_extract_polygon(
+    payload: Landsat9ExtractPolygonRequest,
+) -> Landsat9ExtractValueResponse | JSONResponse:
+    try:
+        service = get_landsat9_extract_service()
+        value = service.extract_polygon(
+            geometry_geojson=payload.geometry,
+            date_start=payload.date_start,
+            date_end=payload.date_end,
+            metric=payload.metric,
+        )
+        series: list[dict[str, object]] = []
+        if hasattr(service, "timeseries"):
+            timeseries_fn = cast(Any, service).timeseries
+            series = list(
+                timeseries_fn(
+                    geometry_geojson=payload.geometry,
+                    date_start=payload.date_start,
+                    date_end=payload.date_end,
+                    metric=payload.metric,
+                )
+            )
+        if series:
+            values = [
+                float(cast(float, item.get("value")))
+                for item in series
+                if isinstance(item, dict)
+                and isinstance(item.get("value"), (int, float))
+            ]
+            if values:
+                value = sum(values) / len(values)
+    except Landsat9ValidationError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+    except GEEAuthError as exc:
+        return _error_response(
+            DomainError("GEE_AUTH_FAILED", exc.message, retryable=False)
+        )
+    except GEEUnavailableError as exc:
+        return _error_response(DomainError(exc.error_code, exc.message, exc.retryable))
+
+    return Landsat9ExtractValueResponse(
+        dataset="LANDSAT/LC09/C02/T1_L2",
         metric=payload.metric,
         value=value,
         series=series,

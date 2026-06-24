@@ -56,6 +56,8 @@ Arquivos de referencia:
 - `GET /gee/datasets`
 - `POST /gee/sentinel2/extract/point`
 - `POST /gee/sentinel2/extract/polygon`
+- `POST /gee/landsat9/extract/point`
+- `POST /gee/landsat9/extract/polygon`
 - `POST /gee/sentinel1/extract/point`
 - `POST /gee/sentinel1/extract/polygon`
 - `POST /gee/era5-land/extract/point`

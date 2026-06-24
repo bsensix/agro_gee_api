@@ -100,6 +100,24 @@ class GEEClient(Protocol):
         metric: str,
     ) -> float: ...
 
+    def extract_point_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float: ...
+
+    def extract_polygon_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float: ...
+
     def timeseries(
         self,
         *,
@@ -111,6 +129,15 @@ class GEEClient(Protocol):
     ) -> list[dict[str, object]]: ...
 
     def timeseries_sentinel1(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> list[dict[str, object]]: ...
+
+    def timeseries_landsat9(
         self,
         *,
         geometry_geojson: dict[str, object],
@@ -164,6 +191,7 @@ class GEERuntimeProtocol(Protocol):
 class EarthEngineClient:
     _DATASET = "COPERNICUS/S2_SR_HARMONIZED"
     _SENTINEL1_DATASET = "COPERNICUS/S1_GRD"
+    _LANDSAT9_DATASET = "LANDSAT/LC09/C02/T1_L2"
     _DATASET_EXTRACT_DEFAULT_SCALE = 10_000
 
     def __init__(
@@ -288,6 +316,54 @@ class EarthEngineClient:
     ) -> list[dict[str, object]]:
         return self._execute(
             self._operation_timeseries_sentinel1,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def extract_point_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "ndvi_mean",
+    ) -> float:
+        return self._execute(
+            self._operation_extract_point_landsat9,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def extract_polygon_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "ndvi_mean",
+    ) -> float:
+        return self._execute(
+            self._operation_extract_polygon_landsat9,
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def timeseries_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str = "ndvi_mean",
+    ) -> list[dict[str, object]]:
+        return self._execute(
+            self._operation_timeseries_landsat9,
             geometry_geojson=geometry_geojson,
             date_start=date_start,
             date_end=date_end,
@@ -476,6 +552,36 @@ class EarthEngineClient:
             metric=metric,
         )
 
+    def _operation_extract_point_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        return self._extract_reduced_value_landsat9(
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
+    def _operation_extract_polygon_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        return self._extract_reduced_value_landsat9(
+            geometry_geojson=geometry_geojson,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+
     def _operation_timeseries(
         self,
         *,
@@ -532,6 +638,12 @@ class EarthEngineClient:
                     cloud_pct = None
             result.append(
                 {"date": str(date_value), "value": value, "cloud_pct": cloud_pct}
+            )
+        if not result:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid imagery for requested period",
+                retryable=False,
             )
         return result
 
@@ -601,6 +713,69 @@ class EarthEngineClient:
 
             result.append({"date": str(date_value), "value": value, "cloud_pct": None})
 
+        if not result:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid imagery for requested period",
+                retryable=False,
+            )
+        return result
+
+    def _operation_timeseries_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> list[dict[str, object]]:
+        geometry = self._ee.Geometry(geometry_geojson)
+        collection = self._filtered_collection_landsat9(
+            geometry=geometry,
+            date_start=date_start,
+            date_end=date_end,
+        )
+        timeseries_collection = collection.map(
+            lambda image: self._to_timeseries_feature_landsat9(
+                image=image,
+                geometry=geometry,
+                metric=metric,
+            )
+        )
+        info = timeseries_collection.getInfo()
+        features = info.get("features", []) if isinstance(info, dict) else []
+        if not isinstance(features, list):
+            return []
+
+        result: list[dict[str, object]] = []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            properties = feature.get("properties", {})
+            if not isinstance(properties, dict):
+                continue
+            date_value = properties.get("date") or properties.get("system:time_start")
+            metric_value = properties.get("value")
+            if (
+                not isinstance(date_value, str)
+                or not date_value
+                or metric_value is None
+            ):
+                continue
+            try:
+                value = float(metric_value)
+            except (TypeError, ValueError):
+                continue
+            cloud_pct: float | None = None
+            raw_cloud_pct = properties.get("cloud_pct")
+            if raw_cloud_pct is not None:
+                try:
+                    cloud_pct = float(raw_cloud_pct)
+                except (TypeError, ValueError):
+                    cloud_pct = None
+            result.append(
+                {"date": str(date_value), "value": value, "cloud_pct": cloud_pct}
+            )
         if not result:
             raise GEEUnavailableError(
                 "NO_IMAGERY",
@@ -1089,6 +1264,91 @@ class EarthEngineClient:
             )
         raise ValueError("Unsupported metric")
 
+    def _extract_reduced_value_landsat9(
+        self,
+        *,
+        geometry_geojson: dict[str, object],
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> float:
+        geometry = self._ee.Geometry(geometry_geojson)
+        collection = self._landsat9_index_collection(
+            geometry=geometry,
+            date_start=date_start,
+            date_end=date_end,
+            metric=metric,
+        )
+        stats = (
+            collection.mean()
+            .reduceRegion(
+                reducer=self._ee.Reducer.mean(),
+                geometry=geometry,
+                scale=30,
+                maxPixels=1_000_000_000,
+            )
+            .getInfo()
+        )
+        value = self._extract_index_value(stats)
+        if value is None:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid imagery for requested period",
+                retryable=False,
+            )
+        return value
+
+    def _filtered_collection_landsat9(
+        self,
+        *,
+        geometry: object,
+        date_start: str,
+        date_end: str,
+    ) -> object:
+        start_at, end_before = self._to_utc_filter_window(
+            date_start=date_start,
+            date_end=date_end,
+        )
+        return (
+            self._ee.ImageCollection(self._LANDSAT9_DATASET)
+            .filterBounds(geometry)
+            .filterDate(start_at, end_before)
+            .filter(self._ee.Filter.lte("CLOUD_COVER", 20))
+        )
+
+    def _landsat9_index_collection(
+        self,
+        *,
+        geometry: object,
+        date_start: str,
+        date_end: str,
+        metric: str,
+    ) -> object:
+        base = self._filtered_collection_landsat9(
+            geometry=geometry,
+            date_start=date_start,
+            date_end=date_end,
+        )
+        return base.map(
+            lambda image: (
+                self._landsat9_index_image(image=image, metric=metric)
+                .rename("INDEX")
+                .copyProperties(
+                    image,
+                    ["system:time_start", "CLOUD_COVER"],
+                )
+            )
+        )
+
+    def _landsat9_index_image(self, *, image: object, metric: str) -> object:
+        if metric == "ndvi_mean":
+            return image.normalizedDifference(["SR_B5", "SR_B4"])
+        if metric == "ndwi_mean":
+            return image.normalizedDifference(["SR_B3", "SR_B5"])
+        if metric == "ndre_mean":
+            return image.normalizedDifference(["SR_B5", "SR_B6"])
+        raise ValueError("Unsupported metric")
+
     def _to_timeseries_feature_sentinel1(
         self, *, image: object, geometry: object, metric: str
     ) -> object:
@@ -1170,6 +1430,47 @@ class EarthEngineClient:
             "cloud_pct": None,
             "vv_db": vv_value,
             "vh_db": vh_value,
+        }
+        if hasattr(self._ee, "Feature"):
+            return self._ee.Feature(None, properties)
+        return {"type": "Feature", "properties": properties}
+
+    def _to_timeseries_feature_landsat9(
+        self, *, image: object, geometry: object, metric: str
+    ) -> object:
+        index_image = self._landsat9_index_image(image=image, metric=metric).rename(
+            "INDEX"
+        )
+        stats = (
+            index_image.reduceRegion(
+                reducer=self._ee.Reducer.mean(),
+                geometry=geometry,
+                scale=30,
+                maxPixels=1_000_000_000,
+            )
+            if hasattr(index_image, "reduceRegion")
+            else {}
+        )
+        metric_value: object = None
+        if hasattr(stats, "get"):
+            metric_value = stats.get("INDEX")
+        elif isinstance(stats, dict):
+            metric_value = stats.get("INDEX")
+
+        date_value: object = None
+        if hasattr(image, "date"):
+            date_obj = image.date()
+            if hasattr(date_obj, "format"):
+                date_value = date_obj.format("YYYY-MM-dd")
+
+        cloud_pct_value: object = None
+        if hasattr(image, "get"):
+            cloud_pct_value = image.get("CLOUD_COVER")
+
+        properties = {
+            "date": date_value,
+            "value": metric_value,
+            "cloud_pct": cloud_pct_value,
         }
         if hasattr(self._ee, "Feature"):
             return self._ee.Feature(None, properties)

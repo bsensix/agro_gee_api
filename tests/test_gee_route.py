@@ -2102,3 +2102,303 @@ def test_post_satellite_embedding_extract_polygon_maps_service_timeout(
     assert response.status_code == 504
     assert response.json()["error_code"] == "GEE_TIMEOUT"
     assert response.json()["retryable"] is True
+
+
+LANDSAT9_VALID_POINT_PAYLOAD = {
+    "coordinates": [-47.0, -15.0],
+    "date_start": "2026-06-01",
+    "date_end": "2026-06-10",
+    "metric": "ndvi_mean",
+}
+
+LANDSAT9_VALID_POLYGON_PAYLOAD = {
+    "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+            [[-47.0, -15.0], [-46.9, -15.0], [-46.9, -15.1], [-47.0, -15.0]]
+        ],
+    },
+    "date_start": "2026-06-01",
+    "date_end": "2026-06-10",
+    "metric": "ndvi_mean",
+}
+
+
+def test_post_landsat9_extract_point_returns_value(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.55
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dataset": "LANDSAT/LC09/C02/T1_L2",
+        "metric": "ndvi_mean",
+        "value": 0.55,
+        "series": [],
+    }
+
+
+def test_post_landsat9_extract_point_includes_series_with_cloud_pct(
+    monkeypatch,
+) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.88
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return [
+                {"date": "2026-06-01", "value": 0.30, "cloud_pct": 10.0},
+                {"date": "2026-06-02", "value": 0.50, "cloud_pct": 20.0},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.4
+    assert response.json()["series"] == [
+        {"date": "2026-06-01", "value": 0.3, "cloud_pct": 10.0},
+        {"date": "2026-06-02", "value": 0.5, "cloud_pct": 20.0},
+    ]
+
+
+def test_post_landsat9_extract_polygon_returns_value(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_polygon(self, **_: object) -> float:
+            return 0.62
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/polygon", json={**LANDSAT9_VALID_POLYGON_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == 0.62
+    assert response.json()["dataset"] == "LANDSAT/LC09/C02/T1_L2"
+
+
+def test_post_landsat9_extract_point_maps_unsupported_metric_to_invalid_request(
+    monkeypatch,
+) -> None:
+    from agro_gee_api.services.gee_landsat9_extract import (
+        ValidationError as Landsat9ValidationError,
+    )
+
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            raise Landsat9ValidationError("INVALID_REQUEST", "Unsupported metric")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point",
+        json={**LANDSAT9_VALID_POINT_PAYLOAD, "metric": "foo_mean"},
+    )
+    body = response.json()
+
+    assert response.status_code == 400
+    assert body["error_code"] == "INVALID_REQUEST"
+    assert "correlation_id" in body
+
+
+def test_post_landsat9_extract_point_maps_no_imagery_to_422(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            raise GEEUnavailableError(
+                "NO_IMAGERY", "No imagery for date range", retryable=False
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 422
+    assert body["error_code"] == "NO_IMAGERY"
+    assert "correlation_id" in body
+
+
+def test_post_landsat9_extract_point_maps_gee_unavailable_to_503(
+    monkeypatch,
+) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            raise GEEUnavailableError("GEE_UNAVAILABLE", "unavailable", retryable=True)
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["error_code"] == "GEE_UNAVAILABLE"
+    assert body["retryable"] is True
+
+
+from agro_gee_api.services.gee_landsat9_extract import (
+    GEEAuthFailedError as Landsat9GEEAuthFailedError,
+    GEETimeoutError as Landsat9GEETimeoutError,
+)
+
+
+def test_post_landsat9_extract_point_maps_auth_failed_to_500(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            raise Landsat9GEEAuthFailedError("GEE_AUTH_FAILED", "auth failed")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+    assert body["retryable"] is False
+
+
+def test_post_landsat9_extract_point_maps_timeout_to_504(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            raise Landsat9GEETimeoutError("GEE_TIMEOUT", "timeout", retryable=True)
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 504
+    assert body["error_code"] == "GEE_TIMEOUT"
+    assert body["retryable"] is True
+
+
+def test_post_landsat9_extract_polygon_maps_no_imagery_to_422(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise GEEUnavailableError(
+                "NO_IMAGERY", "No imagery for polygon", retryable=False
+            )
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/polygon", json={**LANDSAT9_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 422
+    assert body["error_code"] == "NO_IMAGERY"
+
+
+def test_post_landsat9_extract_polygon_maps_auth_failed_to_500(monkeypatch) -> None:
+    class Landsat9Service:
+        def extract_polygon(self, **_: object) -> float:
+            raise GEEAuthError("GEE_AUTH_FAILED", "auth failed polygon")
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/polygon", json={**LANDSAT9_VALID_POLYGON_PAYLOAD}
+    )
+    body = response.json()
+
+    assert response.status_code == 500
+    assert body["error_code"] == "GEE_AUTH_FAILED"
+
+
+def test_post_landsat9_extract_point_recalculates_value_from_numeric_series(
+    monkeypatch,
+) -> None:
+    import pytest
+
+    class Landsat9Service:
+        def extract_point(self, **_: object) -> float:
+            return 0.99
+
+        def timeseries(self, **_: object) -> list[dict[str, object]]:
+            return [
+                {"date": "2026-06-01", "value": 0.40, "cloud_pct": None},
+                {"date": "2026-06-02", "value": "ignored", "cloud_pct": None},
+                {"date": "2026-06-03", "value": 0.80, "cloud_pct": None},
+            ]
+
+    monkeypatch.setattr(
+        "agro_gee_api.routes.gee.get_landsat9_extract_service",
+        lambda: Landsat9Service(),
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/gee/landsat9/extract/point", json={**LANDSAT9_VALID_POINT_PAYLOAD}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["value"] == pytest.approx(0.6)

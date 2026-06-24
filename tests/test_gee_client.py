@@ -172,7 +172,7 @@ class FakeTimeseriesImage:
         return FakeDictValue({"INDEX": self._ndvi}, self._ee)
 
     def get(self, key: str) -> object:
-        if key == "CLOUDY_PIXEL_PERCENTAGE":
+        if key in {"CLOUDY_PIXEL_PERCENTAGE", "CLOUD_COVER"}:
             return self._cloud_pct
         return None
 
@@ -345,7 +345,10 @@ class FakeImageCollection:
 
     def map(self, fn: object) -> "FakeImageCollection | FakeFeatureCollection":
         if callable(fn):
-            if self._ee.mode == "timeseries" and self._ee.timeseries_samples:
+            if (
+                self._ee.mode in {"timeseries", "landsat9_timeseries"}
+                and self._ee.timeseries_samples
+            ):
                 first_date, first_ndvi, first_cloud_pct = self._ee.timeseries_samples[0]
                 self._ee.in_map_callback = True
                 first_result = fn(
@@ -491,9 +494,16 @@ class FakeEE:
         self.Filter = FakeFilter()
         self.Reducer = FakeReducer()
         self.Geometry = FakeGeometryFactory()
+        self.landsat9_mean_values: dict[str, float] = {}
 
     def ImageCollection(self, dataset_id: str) -> FakeImageCollection:
-        if self.mode not in {"dataset", "sentinel1", "sentinel1_timeseries"}:
+        if self.mode not in {
+            "dataset",
+            "sentinel1",
+            "sentinel1_timeseries",
+            "landsat9",
+            "landsat9_timeseries",
+        }:
             assert dataset_id == "COPERNICUS/S2_SR_HARMONIZED"
         self.last_dataset_id = dataset_id
         return FakeImageCollection(self)
@@ -1252,3 +1262,100 @@ def test_sentinel1_timeseries_all_non_finite_values_map_to_no_imagery(
 
     assert raised.value.error_code == "NO_IMAGERY"
     assert raised.value.retryable is False
+
+
+#
+# Landsat 9
+#
+
+
+@pytest.mark.parametrize(
+    ("method_name", "mode", "metric", "expected"),
+    [
+        ("extract_point_landsat9", "landsat9", "ndvi_mean", 0.42),
+        ("extract_point_landsat9", "landsat9", "ndwi_mean", 0.42),
+        ("extract_point_landsat9", "landsat9", "ndre_mean", 0.42),
+        ("extract_polygon_landsat9", "landsat9", "ndvi_mean", 0.42),
+        ("extract_polygon_landsat9", "landsat9", "ndwi_mean", 0.42),
+        ("extract_polygon_landsat9", "landsat9", "ndre_mean", 0.42),
+    ],
+)
+def test_landsat9_metric_mapping(
+    gee_client: tuple[EarthEngineClient, FakeRuntime, FakeEE],
+    method_name: str,
+    mode: str,
+    metric: str,
+    expected: float,
+) -> None:
+    client, runtime, ee = gee_client
+    ee.mode = mode
+
+    method = getattr(client, method_name)
+    result = method(
+        geometry_geojson={"type": "Point", "coordinates": [1.0, 2.0]},
+        date_start="2024-01-01",
+        date_end="2024-01-31",
+        metric=metric,
+    )
+
+    assert runtime.ensure_initialized_calls == 1
+    assert result == expected
+
+
+def test_landsat9_extract_uses_landsat9_dataset_id(
+    gee_client: tuple[EarthEngineClient, FakeRuntime, FakeEE],
+) -> None:
+    client, _, ee = gee_client
+    ee.mode = "landsat9"
+
+    client.extract_point_landsat9(
+        geometry_geojson={"type": "Point", "coordinates": [1.0, 2.0]},
+        date_start="2024-01-01",
+        date_end="2024-01-31",
+        metric="ndvi_mean",
+    )
+
+    assert ee.last_dataset_id == "LANDSAT/LC09/C02/T1_L2"
+
+
+def test_landsat9_timeseries_uses_landsat9_dataset_id(
+    gee_client: tuple[EarthEngineClient, FakeRuntime, FakeEE],
+) -> None:
+    client, _, ee = gee_client
+    ee.mode = "landsat9_timeseries"
+    ee.timeseries_samples = [
+        ("2024-01-01", 0.21, 12.0),
+        ("2024-01-02", 0.34, 8.0),
+    ]
+
+    client.timeseries_landsat9(
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+        date_start="2024-01-01",
+        date_end="2024-01-31",
+        metric="ndvi_mean",
+    )
+
+    assert ee.last_dataset_id == "LANDSAT/LC09/C02/T1_L2"
+
+
+def test_landsat9_timeseries_returns_items(
+    gee_client: tuple[EarthEngineClient, FakeRuntime, FakeEE],
+) -> None:
+    client, _, ee = gee_client
+    ee.mode = "landsat9_timeseries"
+    ee.timeseries_samples = [
+        ("2024-01-01", 0.21, 12.0),
+        ("2024-01-11", 0.34, 8.0),
+    ]
+
+    items = client.timeseries_landsat9(
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+        date_start="2024-01-01",
+        date_end="2024-01-31",
+        metric="ndvi_mean",
+    )
+
+    assert items == [
+        {"date": "2024-01-01", "value": 0.21, "cloud_pct": 12.0},
+        {"date": "2024-01-11", "value": 0.34, "cloud_pct": 8.0},
+    ]

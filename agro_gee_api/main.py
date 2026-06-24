@@ -30,6 +30,10 @@ OPENAPI_TAGS = [
         "description": "Sentinel-2 extraction endpoints for point and polygon geometries.",
     },
     {
+        "name": "landsat9",
+        "description": "Landsat 9 extraction endpoints for point and polygon geometries.",
+    },
+    {
         "name": "era5-land",
         "description": "ERA5-Land extraction and variable catalog endpoints.",
     },
