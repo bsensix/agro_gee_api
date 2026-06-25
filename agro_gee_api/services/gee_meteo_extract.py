@@ -65,6 +65,11 @@ _DEFAULT_DATASET_SETTINGS = _DatasetExtractSettings(
     max_window_label="31 days",
 )
 _DATASET_SETTINGS_BY_KEY: dict[str, _DatasetExtractSettings] = {
+    "copernicus-dem-glo30": _DatasetExtractSettings(
+        max_window_days=36500,
+        max_window_label="100 years",
+        scale=30,
+    ),
     "satellite-embedding-annual": _DatasetExtractSettings(
         max_window_days=3660,
         max_window_label="10 years",

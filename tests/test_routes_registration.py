@@ -106,6 +106,7 @@ def test_all_gee_operations_use_single_allowed_non_generic_tag() -> None:
         "era5-land",
         "ifs-forecast",
         "satellite-embedding-annual",
+        "copernicus-dem-glo30",
     }
     gee_operations = {
         op_key: op for op_key, op in operations.items() if op_key[0].startswith("/gee")
@@ -136,6 +137,7 @@ def test_openapi_global_tag_metadata_order_and_descriptions() -> None:
         "era5-land",
         "ifs-forecast",
         "satellite-embedding-annual",
+        "copernicus-dem-glo30",
         "agro-phenology",
         "agro-water",
         "agro-thermal",

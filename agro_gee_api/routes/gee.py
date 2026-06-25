@@ -253,6 +253,51 @@ def get_meteo_extract_service() -> MeteoExtractService:
     )
 
 
+class _DEMRouteClient:
+    def __init__(self, *, gee_client: EarthEngineClient) -> None:
+        self._gee_client = gee_client
+
+    def extract_dataset_point(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        geometry_geojson: dict[str, object],
+        date_start: str = "",
+        date_end: str = "",
+        scale: int | None = None,
+    ) -> DatasetExtractResult:
+        return self._gee_client.extract_point_mosaic_dataset(
+            dataset_id=dataset_id,
+            band_name=band_name,
+            variable=band_name,
+            geometry_geojson=geometry_geojson,
+            scale=scale,
+        )
+
+    def extract_dataset_polygon(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        geometry_geojson: dict[str, object],
+        date_start: str = "",
+        date_end: str = "",
+        scale: int | None = None,
+    ) -> DatasetExtractResult:
+        return self._gee_client.extract_polygon_mosaic_dataset(
+            dataset_id=dataset_id,
+            band_name=band_name,
+            variable=band_name,
+            geometry_geojson=geometry_geojson,
+            scale=scale,
+        )
+
+
+def get_dem_extract_service() -> MeteoExtractService:
+    return MeteoExtractService(gee_client=_DEMRouteClient(gee_client=get_gee_client()))
+
+
 def _error_response(exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=STATUS_BY_CODE.get(exc.error_code, 500),
@@ -928,3 +973,94 @@ def post_landsat9_extract_polygon(
         value=value,
         series=series,
     )
+
+
+def _dem_extract_point(
+    *, dataset_key: str, payload: MeteoExtractPointRequest
+) -> MeteoExtractResponse | JSONResponse:
+    try:
+        geometry_geojson = _validate_point_coordinates(payload.coordinates)
+        extract_result = get_dem_extract_service().extract_point(
+            dataset_key=dataset_key,
+            geometry_geojson=geometry_geojson,
+            date_start=payload.date_start,
+            date_end=payload.date_end,
+            variable=payload.variable,
+        )
+    except DomainError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(_map_meteo_error(exc))
+
+    return MeteoExtractResponse(
+        dataset=extract_result["dataset"],
+        variable=extract_result["variable"],
+        value=extract_result["value"],
+        series=[
+            MeteoExtractSeriesItemResponse(date=item["date"], value=item["value"])
+            for item in extract_result["series"]
+        ],
+    )
+
+
+def _dem_extract_polygon(
+    *, dataset_key: str, payload: MeteoExtractPolygonRequest
+) -> MeteoExtractResponse | JSONResponse:
+    try:
+        geometry_geojson = _validate_polygon_geometry(payload.geometry)
+        extract_result = get_dem_extract_service().extract_polygon(
+            dataset_key=dataset_key,
+            geometry_geojson=geometry_geojson,
+            date_start=payload.date_start,
+            date_end=payload.date_end,
+            variable=payload.variable,
+        )
+    except DomainError as exc:
+        return _error_response(exc)
+    except Exception as exc:
+        return _error_response(_map_meteo_error(exc))
+
+    return MeteoExtractResponse(
+        dataset=extract_result["dataset"],
+        variable=extract_result["variable"],
+        value=extract_result["value"],
+        series=[
+            MeteoExtractSeriesItemResponse(date=item["date"], value=item["value"])
+            for item in extract_result["series"]
+        ],
+    )
+
+
+@router.post(
+    "/copernicus-dem-glo30/extract/point",
+    response_model=MeteoExtractResponse,
+    tags=["copernicus-dem-glo30"],
+)
+def post_copernicus_dem_glo30_extract_point(
+    payload: MeteoExtractPointRequest,
+) -> MeteoExtractResponse | JSONResponse:
+    return _dem_extract_point(dataset_key="copernicus-dem-glo30", payload=payload)
+
+
+@router.post(
+    "/copernicus-dem-glo30/extract/polygon",
+    response_model=MeteoExtractResponse,
+    tags=["copernicus-dem-glo30"],
+)
+def post_copernicus_dem_glo30_extract_polygon(
+    payload: MeteoExtractPolygonRequest,
+) -> MeteoExtractResponse | JSONResponse:
+    return _dem_extract_polygon(dataset_key="copernicus-dem-glo30", payload=payload)
+
+
+@router.get(
+    "/datasets/copernicus-dem-glo30/variables",
+    response_model=list[MeteoVariableResponse],
+    tags=["copernicus-dem-glo30"],
+)
+def get_copernicus_dem_glo30_variables() -> list[MeteoVariableResponse] | JSONResponse:
+    try:
+        variables = get_dem_extract_service().list_variables("copernicus-dem-glo30")
+    except Exception as exc:
+        return _error_response(_map_meteo_error(exc))
+    return [MeteoVariableResponse(**item) for item in _sort_variable_catalog(variables)]

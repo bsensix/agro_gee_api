@@ -180,6 +180,26 @@ class GEEClient(Protocol):
         scale: int | None = None,
     ) -> DatasetExtractResult: ...
 
+    def extract_point_mosaic_dataset(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        variable: str,
+        geometry_geojson: dict[str, object],
+        scale: int | None = None,
+    ) -> DatasetExtractResult: ...
+
+    def extract_polygon_mosaic_dataset(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        variable: str,
+        geometry_geojson: dict[str, object],
+        scale: int | None = None,
+    ) -> DatasetExtractResult: ...
+
 
 T = TypeVar("T")
 
@@ -429,6 +449,42 @@ class EarthEngineClient:
             geometry_geojson=geometry_geojson,
             date_start=date_start,
             date_end=date_end,
+            scale=scale,
+        )
+
+    def extract_point_mosaic_dataset(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        variable: str,
+        geometry_geojson: dict[str, object],
+        scale: int | None = None,
+    ) -> DatasetExtractResult:
+        return self._execute(
+            self._operation_extract_mosaic_dataset,
+            dataset_id=dataset_id,
+            band_name=band_name,
+            variable=variable,
+            geometry_geojson=geometry_geojson,
+            scale=scale,
+        )
+
+    def extract_polygon_mosaic_dataset(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        variable: str,
+        geometry_geojson: dict[str, object],
+        scale: int | None = None,
+    ) -> DatasetExtractResult:
+        return self._execute(
+            self._operation_extract_mosaic_dataset,
+            dataset_id=dataset_id,
+            band_name=band_name,
+            variable=variable,
+            geometry_geojson=geometry_geojson,
             scale=scale,
         )
 
@@ -896,6 +952,58 @@ class EarthEngineClient:
             date_end=date_end,
             scale=scale,
         )
+
+    def _operation_extract_mosaic_dataset(
+        self,
+        *,
+        dataset_id: str,
+        band_name: str,
+        variable: str,
+        geometry_geojson: dict[str, object],
+        scale: int | None,
+    ) -> DatasetExtractResult:
+        geometry = self._ee.Geometry(geometry_geojson)
+        effective_scale = (
+            scale if scale is not None else self._DATASET_EXTRACT_DEFAULT_SCALE
+        )
+        mosaic = self._ee.ImageCollection(dataset_id).mosaic()
+        stats = (
+            mosaic.select(band_name)
+            .reduceRegion(
+                reducer=self._ee.Reducer.mean(),
+                geometry=geometry,
+                scale=effective_scale,
+                maxPixels=1_000_000_000,
+            )
+            .getInfo()
+        )
+        raw_value = stats.get(band_name) if isinstance(stats, dict) else None
+        if raw_value is None:
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid data for requested region",
+                retryable=False,
+            )
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid data for requested region",
+                retryable=False,
+            )
+        if not math.isfinite(value):
+            raise GEEUnavailableError(
+                "NO_IMAGERY",
+                "No valid data for requested region",
+                retryable=False,
+            )
+        return {
+            "dataset": dataset_id,
+            "variable": variable,
+            "value": value,
+            "series": [{"date": "2020-01-01", "value": value, "cloud_pct": None}],
+        }
 
     def _operation_extract_dataset(
         self,

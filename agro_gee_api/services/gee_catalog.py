@@ -30,6 +30,13 @@ class SeededGEECatalogRepository:
             "bands": ["SR_B2", "SR_B3", "SR_B4", "SR_B5", "QA_PIXEL"],
             "is_active": False,
         },
+        {
+            "dataset_id": "COPERNICUS/DEM/GLO30",
+            "provider": "gee",
+            "title": "Copernicus DEM GLO30",
+            "bands": ["DEM"],
+            "is_active": True,
+        },
     ]
 
     def list_datasets(self) -> list[dict[str, object]]:

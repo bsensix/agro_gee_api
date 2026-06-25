@@ -166,6 +166,19 @@ _DATASET_CATALOGS: dict[str, MeteoDatasetCatalog] = {
             ),
         ),
     ),
+    "copernicus-dem-glo30": MeteoDatasetCatalog(
+        key="copernicus-dem-glo30",
+        dataset_id="COPERNICUS/DEM/GLO30",
+        title="Copernicus DEM GLO30",
+        variables=(
+            MeteoVariable(
+                variable="elevation",
+                band_name="DEM",
+                title="Digital elevation model",
+                unit="m",
+            ),
+        ),
+    ),
     "satellite-embedding-annual": MeteoDatasetCatalog(
         key="satellite-embedding-annual",
         dataset_id="GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",

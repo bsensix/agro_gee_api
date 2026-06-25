@@ -36,8 +36,12 @@ def test_list_datasets_uses_seeded_catalog_without_db_dependency() -> None:
 
     result = service.list_datasets()
 
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0].dataset_id == "COPERNICUS/S2_SR_HARMONIZED"
     assert result[0].provider == "gee"
     assert result[0].title == "Sentinel-2 SR Harmonized"
     assert result[0].bands == ["B2", "B3", "B4", "B8", "QA60"]
+    assert result[1].dataset_id == "COPERNICUS/DEM/GLO30"
+    assert result[1].provider == "gee"
+    assert result[1].title == "Copernicus DEM GLO30"
+    assert result[1].bands == ["DEM"]

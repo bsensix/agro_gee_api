@@ -46,6 +46,10 @@ OPENAPI_TAGS = [
         "description": "Satellite Embedding Annual extraction and variable catalog endpoints.",
     },
     {
+        "name": "copernicus-dem-glo30",
+        "description": "Copernicus DEM GLO30 extraction and variable catalog endpoints.",
+    },
+    {
         "name": "agro-phenology",
         "description": "Phenology estimation endpoints for point and polygon geometries.",
     },
